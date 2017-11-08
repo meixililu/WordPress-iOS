@@ -463,6 +463,9 @@ NSString * const OptionsKeyPublicizeDisabled = @"publicize_permanently_disabled"
             return [self supportsPushNotifications];
         case BlogFeatureThemeBrowsing:
             return [self supportsRestApi] && [self isAdmin];
+        case BlogFeatureActivity:
+            // For now Activity is suported only on Jetpack sites for admin users
+            return [self supportsRestApi] && [self isAdmin] && ![self isHostedAtWPcom];
         case BlogFeatureCustomThemes:
             return [self supportsRestApi] && [self isAdmin] && ![self isHostedAtWPcom];
         case BlogFeaturePremiumThemes:
