@@ -3,6 +3,8 @@
 #import "SiteServiceRemoteWordPressComREST.h"
 #import "RemoteMedia.h"
 
+@class RemoteAutosaveResponse;
+
 @interface PostServiceRemoteREST : SiteServiceRemoteWordPressComREST <PostServiceRemote>
 
 /**
@@ -13,7 +15,7 @@
  *  @param      failure     The block that will be executed on failure.  Can be nil.
  */
 - (void)autosave:(RemotePost *)post
-         success:(void (^)(RemotePost *post))success
+         success:(void (^)(RemoteAutosaveResponse *))success
          failure:(void (^)(NSError *error))failure;
 
 /**

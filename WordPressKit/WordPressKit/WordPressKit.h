@@ -45,6 +45,7 @@ FOUNDATION_EXPORT const unsigned char WordPressKitVersionString[];
 #import "ThemeServiceRemote.h"
 #import "WordPressComServiceRemote.h"
 
+#import "RemoteAutosaveResponse.h"
 #import "RemoteBlog.h"
 #import "RemoteBlogOptionsHelper.h"
 #import "RemoteComment.h"

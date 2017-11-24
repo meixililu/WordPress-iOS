@@ -120,7 +120,7 @@ static NSString * const RemoteOptionValueOrderByPostID = @"ID";
 }
 
 - (void)autosave:(RemotePost *)post
-         success:(void (^)(RemotePost *post))success
+         success:(void (^)(RemoteAutosaveResponse *))success
          failure:(void (^)(NSError *error))failure
 {
     NSParameterAssert([post isKindOfClass:[RemotePost class]]);
@@ -137,9 +137,10 @@ static NSString * const RemoteOptionValueOrderByPostID = @"ID";
     [self.wordPressComRestApi POST:requestUrl
                         parameters:parameters
                            success:^(id responseObject, NSHTTPURLResponse *httpResponse) {
-                               RemotePost *post = [self remotePostFromJSONDictionary:responseObject];
+                               RemoteAutosaveResponse *status = [self remoteAutosaveResponseFromJSONDictionary:responseObject];
+                               
                                if (success) {
-                                   success(post);
+                                   success(status);
                                }
                            } failure:^(NSError *error, NSHTTPURLResponse *httpResponse) {
                                if (failure) {
@@ -353,6 +354,16 @@ static NSString * const RemoteOptionValueOrderByPostID = @"ID";
     return [jsonPosts wp_map:^id(NSDictionary *jsonPost) {
         return [self remotePostFromJSONDictionary:jsonPost];
     }];
+}
+
+- (RemoteAutosaveResponse *)remoteAutosaveResponseFromJSONDictionary:(NSDictionary *)json {
+    RemoteAutosaveResponse *status = [RemoteAutosaveResponse new];
+    
+    status.postID = json[@"ID"];
+    status.dateModified = [NSDate dateWithWordPressComJSONString:json[@"modified"]];
+    status.previewURL = [NSURL URLWithString:json[@"preview_URL"]];
+    
+    return status;
 }
 
 - (RemotePost *)remotePostFromJSONDictionary:(NSDictionary *)jsonPost {

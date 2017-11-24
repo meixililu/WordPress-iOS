@@ -242,8 +242,6 @@ const NSUInteger PostServiceDefaultNumberToSync = 40;
 {
     NSAssert(post.managedObjectContext != nil, @"The post should be added to a MOC before autosaving.");
 
-    NSManagedObjectContext *managedObjectContext = post.managedObjectContext;
-
     post.remoteStatus = AbstractPostRemoteStatusPushing;
     [[ContextManager sharedInstance] saveContext:self.managedObjectContext];
     NSManagedObjectID *postObjectID = post.objectID;
@@ -252,11 +250,11 @@ const NSUInteger PostServiceDefaultNumberToSync = 40;
         id<PostServiceRemote> remote = [self remoteForBlog: post.blog];
         BOOL remoteSupportsAutosave = [self supportsAutosaveForRemote:remote];
 
-        void (^successBlock)(RemotePost *post) = ^(RemotePost *remotePost) {
+        void (^successBlock)(RemoteAutosaveResponse *) = ^(RemoteAutosaveResponse *response) {
             AbstractPost *postInContext = (AbstractPost *)[self.managedObjectContext existingObjectWithID:postObjectID error:nil];
             if (postInContext) {
-                [self updatePost:post withRemotePost:remotePost];
-                success(post);
+                [self updatePost:postInContext withAutosaveResponse:response];
+                success(postInContext);
             } else {
                 // This can happen if the post was deleted right after triggering the upload.
                 success(nil);
@@ -569,6 +567,11 @@ const NSUInteger PostServiceDefaultNumberToSync = 40;
                                               withOptions:(nonnull PostServiceSyncOptions *)options
 {
     return [remote dictionaryWithRemoteOptions:options];
+}
+
+- (void)updatePost:(AbstractPost *)post withAutosaveResponse:(RemoteAutosaveResponse *)response {
+    post.postID = response.postID;
+    post.dateModified = response.dateModified;
 }
 
 - (void)updatePost:(AbstractPost *)post withRemotePost:(RemotePost *)remotePost {
