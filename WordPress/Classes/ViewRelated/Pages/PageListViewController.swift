@@ -26,7 +26,7 @@ class PageListViewController: AbstractPostListViewController, UIViewControllerRe
 
     // MARK: - Convenience constructors
 
-    class func controllerWithBlog(_ blog: Blog) -> PageListViewController {
+    @objc class func controllerWithBlog(_ blog: Blog) -> PageListViewController {
 
         let storyBoard = UIStoryboard(name: "Pages", bundle: Bundle.main)
         let controller = storyBoard.instantiateViewController(withIdentifier: "PageListViewController") as! PageListViewController
@@ -150,7 +150,7 @@ class PageListViewController: AbstractPostListViewController, UIViewControllerRe
     // MARK: - Sync Methods
 
     override internal func postTypeToSync() -> PostServiceType {
-        return PostServiceTypePage as PostServiceType
+        return .page
     }
 
     override internal func lastSyncDate() -> Date? {
@@ -199,7 +199,7 @@ class PageListViewController: AbstractPostListViewController, UIViewControllerRe
 
         // If we have recently trashed posts, create an OR predicate to find posts matching the filter,
         // or posts that were recently deleted.
-        if searchText?.characters.count == 0 && recentlyTrashedPostObjectIDs.count > 0 {
+        if searchText?.count == 0 && recentlyTrashedPostObjectIDs.count > 0 {
 
             let trashedPredicate = NSPredicate(format: "SELF IN %@", recentlyTrashedPostObjectIDs)
 
@@ -208,7 +208,7 @@ class PageListViewController: AbstractPostListViewController, UIViewControllerRe
             predicates.append(filterPredicate)
         }
 
-        if let searchText = searchText, searchText.characters.count > 0 {
+        if let searchText = searchText, searchText.count > 0 {
             let searchPredicate = NSPredicate(format: "postTitle CONTAINS[cd] %@", searchText)
             predicates.append(searchPredicate)
         }
@@ -264,7 +264,7 @@ class PageListViewController: AbstractPostListViewController, UIViewControllerRe
         }
     }
 
-    func tableView(_ tableView: UITableView, cellForRowAtIndexPath indexPath: IndexPath) -> UITableViewCell {
+    @objc func tableView(_ tableView: UITableView, cellForRowAtIndexPath indexPath: IndexPath) -> UITableViewCell {
         if let windowlessCell = dequeCellForWindowlessLoadingIfNeeded(tableView) {
             return windowlessCell
         }
@@ -532,7 +532,7 @@ class PageListViewController: AbstractPostListViewController, UIViewControllerRe
 
     // MARK: - Refreshing noResultsView
 
-    func handleRefreshNoResultsView(_ noResultsView: WPNoResultsView) {
+    @objc func handleRefreshNoResultsView(_ noResultsView: WPNoResultsView) {
         noResultsView.titleText = noResultsTitle()
         noResultsView.messageText = noResultsMessage()
         noResultsView.accessoryView = noResultsAccessoryView()
@@ -592,6 +592,15 @@ class PageListViewController: AbstractPostListViewController, UIViewControllerRe
             return NSLocalizedString("Everything you write is solid gold.", comment: "Displayed when the user views trashed pages in the pages list and there are no pages")
         default:
             return NSLocalizedString("Would you like to publish your first page?", comment: "Displayed when the user views published pages in the pages list and there are no pages")
+        }
+    }
+
+    // MARK: - UISearchControllerDelegate
+
+    func didPresentSearchController(_ searchController: UISearchController) {
+        if #available(iOS 11.0, *) {
+            tableView.scrollIndicatorInsets.top = searchController.searchBar.bounds.height + searchController.searchBar.frame.origin.y - topLayoutGuide.length
+            tableView.contentInset.top = 0
         }
     }
 }

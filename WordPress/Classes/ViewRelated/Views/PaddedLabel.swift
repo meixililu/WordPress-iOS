@@ -1,13 +1,13 @@
 import UIKit
 
 class PaddedLabel: UIView {
-    var padding: (horizontal: CGFloat, vertical: CGFloat) = (0,0) {
+    var padding: (horizontal: CGFloat, vertical: CGFloat) = (0, 0) {
         didSet {
             setNeedsLayout()
         }
     }
 
-    let label = UILabel()
+    @objc let label = UILabel()
 
     override init(frame: CGRect) {
         super.init(frame: frame)

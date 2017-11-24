@@ -237,38 +237,41 @@ const NSUInteger PostServiceDefaultNumberToSync = 40;
 }
 
 - (void)autosavePost:(AbstractPost *)post
-             success:(void (^)())success
+             success:(nullable void (^)(AbstractPost *))success
              failure:(void (^)(NSError * _Nullable error))failure
 {
     NSAssert(post.managedObjectContext != nil, @"The post should be added to a MOC before autosaving.");
 
     NSManagedObjectContext *managedObjectContext = post.managedObjectContext;
 
-    [managedObjectContext performBlockAndWait:^{
-        post.remoteStatus = AbstractPostRemoteStatusPushing;
-        [post.managedObjectContext save:nil];
-    }];
+    post.remoteStatus = AbstractPostRemoteStatusPushing;
+    [[ContextManager sharedInstance] saveContext:self.managedObjectContext];
+    NSManagedObjectID *postObjectID = post.objectID;
 
     if ([post hasRemote]) {
         id<PostServiceRemote> remote = [self remoteForBlog: post.blog];
         BOOL remoteSupportsAutosave = [self supportsAutosaveForRemote:remote];
 
         void (^successBlock)(RemotePost *post) = ^(RemotePost *remotePost) {
-            [managedObjectContext performBlock:^{
-                //[self updatePost:post withRemotePost:remotePost];
-                [managedObjectContext save:nil];
-
-                success();
-            }];
+            AbstractPost *postInContext = (AbstractPost *)[self.managedObjectContext existingObjectWithID:postObjectID error:nil];
+            if (postInContext) {
+                [self updatePost:post withRemotePost:remotePost];
+                success(post);
+            } else {
+                // This can happen if the post was deleted right after triggering the upload.
+                success(nil);
+            }
         };
 
         void (^failureBlock)(NSError *error) = ^(NSError *error) {
-            [managedObjectContext performBlock:^{
-                post.remoteStatus = AbstractPostRemoteStatusFailed;
-                [managedObjectContext save:nil];
-
+            Post *postInContext = (Post *)[self.managedObjectContext existingObjectWithID:postObjectID error:nil];
+            if (postInContext) {
+                postInContext.remoteStatus = AbstractPostRemoteStatusFailed;
+                [[ContextManager sharedInstance] saveContext:self.managedObjectContext];
+            } else {
+                // This can happen if the post was deleted right after triggering the upload.
                 failure(error);
-            }];
+            }
         };
 
         if (remoteSupportsAutosave) {
@@ -290,10 +293,10 @@ const NSUInteger PostServiceDefaultNumberToSync = 40;
 }
 
 - (void)deletePost:(AbstractPost *)post
-           success:(void (^)())success
+           success:(void (^)(void))success
            failure:(void (^)(NSError *error))failure
 {
-    void (^privateBlock)() = ^void() {
+    void (^privateBlock)(void) = ^void() {
         NSNumber *postID = post.postID;
         if ([postID longLongValue] > 0) {
             RemotePost *remotePost = [self remotePostWithPost:post];
@@ -312,7 +315,7 @@ const NSUInteger PostServiceDefaultNumberToSync = 40;
 }
 
 - (void)trashPost:(AbstractPost *)post
-          success:(void (^)())success
+          success:(void (^)(void))success
           failure:(void (^)(NSError *error))failure
 {
     if ([post.status isEqualToString:PostStatusTrash]) {
@@ -320,7 +323,7 @@ const NSUInteger PostServiceDefaultNumberToSync = 40;
         return;
     }
     
-    void(^privateBodyBlock)() = ^void() {
+    void(^privateBodyBlock)(void) = ^void() {
         post.restorableStatus = post.status;
         
         NSNumber *postID = post.postID;
@@ -350,7 +353,7 @@ const NSUInteger PostServiceDefaultNumberToSync = 40;
 }
 
 - (void)trashRemotePostWithPost:(AbstractPost*)post
-                        success:(void (^)())success
+                        success:(void (^)(void))success
                         failure:(void (^)(NSError *error))failure
 {
     NSManagedObjectID *postObjectID = post.objectID;
@@ -394,10 +397,10 @@ const NSUInteger PostServiceDefaultNumberToSync = 40;
 }
 
 - (void)restorePost:(AbstractPost *)post
-            success:(void (^)())success
+            success:(void (^)(void))success
             failure:(void (^)(NSError *error))failure
 {
-    void (^privateBodyBlock)() = ^void() {
+    void (^privateBodyBlock)(void) = ^void() {
         post.status = post.restorableStatus;
         [[ContextManager sharedInstance] saveContext:self.managedObjectContext];
         
@@ -422,7 +425,7 @@ const NSUInteger PostServiceDefaultNumberToSync = 40;
 }
 
 - (void)restoreRemotePostWithPost:(AbstractPost*)post
-                          success:(void (^)())success
+                          success:(void (^)(void))success
                           failure:(void (^)(NSError *error))failure
 {
     NSManagedObjectID *postObjectID = post.objectID;

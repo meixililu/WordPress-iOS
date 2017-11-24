@@ -50,12 +50,13 @@ typedef NS_ENUM(NSInteger, PostSettingsRow) {
 
 static CGFloat CellHeight = 44.0f;
 static NSInteger RowIndexForDatePicker = 0;
+static NSInteger RowIndexForPassword = 3;
 static CGFloat LocationCellHeightToWidthAspectRatio = 0.5f;
 
 static NSString *const TableViewActivityCellIdentifier = @"TableViewActivityCellIdentifier";
 static NSString *const TableViewProgressCellIdentifier = @"TableViewProgressCellIdentifier";
 
-@interface PostSettingsViewController () <UITextFieldDelegate, WPTableImageSourceDelegate, WPPickerViewDelegate,
+@interface PostSettingsViewController () <UITextFieldDelegate, WPPickerViewDelegate,
 UIImagePickerControllerDelegate, UINavigationControllerDelegate,
 UIPopoverControllerDelegate, WPMediaPickerViewControllerDelegate, PostCategoriesViewControllerDelegate>
 
@@ -514,6 +515,8 @@ UIPopoverControllerDelegate, WPMediaPickerViewControllerDelegate, PostCategories
     if (sectionId == PostSettingsSectionMeta) {
         if (indexPath.row == RowIndexForDatePicker && self.datePicker) {
             return CGRectGetHeight(self.datePicker.frame);
+        } else if (indexPath.row == RowIndexForPassword) {
+            return CellHeight;
         }
     }
 
@@ -1275,20 +1278,14 @@ UIPopoverControllerDelegate, WPMediaPickerViewControllerDelegate, PostCategories
     MediaService * mediaService = [[MediaService alloc] initWithManagedObjectContext:context];
     Media *media = [Media existingMediaWithMediaID:self.apost.post_thumbnail inBlog:self.apost.blog];
     void (^successBlock)(Media * media) = ^(Media *featuredMedia) {
-        NSURL *url = [NSURL URLWithString:featuredMedia.remoteURL];
         CGFloat width = CGRectGetWidth(self.view.frame);
-        if (IS_IPAD) {
-            width = WPTableViewFixedWidth;
-        }
         width = width - (PostFeaturedImageCellMargin * 2); // left and right cell margins
         CGFloat height = ceilf(width * 0.66);
-        CGFloat scale = [[UIScreen mainScreen] scale];
-        CGSize imageSize = CGSizeMake(width * scale, height * scale);
-        
-        [self.imageSource fetchImageForURL:url
-                                  withSize:imageSize
-                                 indexPath:indexPath
-                                 isPrivate:self.apost.blog.isPrivate];
+        CGSize imageSize = CGSizeMake(width, height);
+        [mediaService thumbnailImageForMedia:featuredMedia preferredSize:imageSize completion:^(UIImage *image, NSError *error) {
+            self.featuredImage = image;
+            [self.tableView reloadData];
+        }];
     };
     if (media){        
         successBlock(media);
@@ -1306,23 +1303,6 @@ UIPopoverControllerDelegate, WPMediaPickerViewControllerDelegate, PostCategories
     PostFeaturedImageCell *cell = (PostFeaturedImageCell *)[self.tableView cellForRowAtIndexPath:indexPath];
     [cell showLoadingSpinner:NO];
     cell.textLabel.text = NSLocalizedString(@"Featured Image did not load", @"");
-
-}
-
-- (WPTableImageSource *)imageSource
-{
-    if (!_imageSource) {
-        CGFloat width = CGRectGetWidth(self.view.frame);
-        if (IS_IPAD) {
-            width = WPTableViewFixedWidth;
-        }
-        CGFloat max = MAX(width, CGRectGetHeight(self.view.frame));
-        CGSize maxSize = CGSizeMake(max, max);
-        _imageSource = [[WPTableImageSource alloc] initWithMaxSize:maxSize];
-        _imageSource.resizesImagesSynchronously = YES;
-        _imageSource.delegate = self;
-    }
-    return _imageSource;
 }
 
 - (void)uploadFeatureImage:(PHAsset *)asset
@@ -1380,23 +1360,6 @@ UIPopoverControllerDelegate, WPMediaPickerViewControllerDelegate, PostCategories
     [progress setUserInfoObject:NSProgressFileOperationKindCopying forKey:NSProgressFileOperationKindKey];
     self.featuredImageProgress = progress;
     [self.tableView reloadData];
-}
-
-#pragma mark - WPTableImageSourceDelegate
-
-- (void)tableImageSource:(WPTableImageSource *)tableImageSource
-              imageReady:(UIImage *)image
-            forIndexPath:(NSIndexPath *)indexPath
-{
-    self.featuredImage = image;
-    [self.tableView reloadData];
-}
-
-- (void)tableImageSource:(WPTableImageSource *)tableImageSource
- imageFailedforIndexPath:(NSIndexPath *)indexPath
-                   error:(NSError *)error
-{
-    [self featuredImageFailedLoading:indexPath withError:error];
 }
 
 - (NSString *)titleForVisibility

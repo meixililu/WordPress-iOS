@@ -3,27 +3,27 @@ import WordPressShared.WPTableViewCell
 
 open class CommentsTableViewCell: WPTableViewCell {
     // MARK: - Public Properties
-    open var author: String? {
+    @objc open var author: String? {
         didSet {
             refreshDetailsLabel()
         }
     }
-    open var postTitle: String? {
+    @objc open var postTitle: String? {
         didSet {
             refreshDetailsLabel()
         }
     }
-    open var content: String? {
+    @objc open var content: String? {
         didSet {
             refreshDetailsLabel()
         }
     }
-    open var timestamp: String? {
+    @objc open var timestamp: String? {
         didSet {
             refreshTimestampLabel()
         }
     }
-    open var approved: Bool = false {
+    @objc open var approved: Bool = false {
         didSet {
             refreshTimestampLabel()
             refreshDetailsLabel()
@@ -35,7 +35,7 @@ open class CommentsTableViewCell: WPTableViewCell {
 
 
     // MARK: - Public Methods
-    open func downloadGravatarWithURL(_ url: URL?) {
+    @objc open func downloadGravatarWithURL(_ url: URL?) {
         if url == gravatarURL {
             return
         }
@@ -46,7 +46,7 @@ open class CommentsTableViewCell: WPTableViewCell {
         gravatarURL = url
     }
 
-    open func downloadGravatarWithGravatarEmail(_ email: String?) {
+    @objc open func downloadGravatarWithGravatarEmail(_ email: String?) {
         guard let unwrappedEmail = email else {
             gravatarImageView.image = placeholderImage
             return
@@ -127,9 +127,9 @@ open class CommentsTableViewCell: WPTableViewCell {
 
         // Arrange the Replacement Map
         let replacementMap  = [
-            "%1$@": NSAttributedString(string: unwrappedAuthor,    attributes: detailsBoldStyle),
-            "%2$@": NSAttributedString(string: unwrappedTitle,     attributes: detailsItalicsStyle),
-            "%3$@": NSAttributedString(string: unwrappedContent,   attributes: detailsRegularStyle)
+            "%1$@": NSAttributedString(string: unwrappedAuthor, attributes: detailsBoldStyle),
+            "%2$@": NSAttributedString(string: unwrappedTitle, attributes: detailsItalicsStyle),
+            "%3$@": NSAttributedString(string: unwrappedContent, attributes: detailsRegularStyle)
         ]
 
         // Replace Author + Title + Content

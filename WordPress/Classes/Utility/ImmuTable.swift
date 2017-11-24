@@ -234,12 +234,12 @@ public enum ImmuTableCell {
 ///         reference to the handler from your view controller.
 ///
 open class ImmuTableViewHandler: NSObject, UITableViewDataSource, UITableViewDelegate {
-    unowned let target: UITableViewController
+    @objc unowned let target: UITableViewController
 
     /// Initializes the handler with a target table view controller.
     /// - postcondition: After initialization, it becomse the data source and
     ///   delegate for the the target's table view.
-    public init(takeOver target: UITableViewController) {
+    @objc public init(takeOver target: UITableViewController) {
         self.target = target
         super.init()
 
@@ -255,6 +255,9 @@ open class ImmuTableViewHandler: NSObject, UITableViewDataSource, UITableViewDel
             }
         }
     }
+
+    /// Configure the handler to automatically deselect any cell after tapping it.
+    @objc var automaticallyDeselectCells = false
 
     // MARK: Table View Data Source
 
@@ -298,6 +301,9 @@ open class ImmuTableViewHandler: NSObject, UITableViewDataSource, UITableViewDel
         } else {
             let row = viewModel.rowAtIndexPath(indexPath)
             row.action?(row)
+        }
+        if automaticallyDeselectCells {
+            tableView.deselectRow(at: indexPath, animated: true)
         }
     }
 

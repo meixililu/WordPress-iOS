@@ -71,7 +71,7 @@ NSString * const WPAccountEmailAndDefaultBlogUpdatedNotification = @"WPAccountEm
     [[NSUserDefaults standardUserDefaults] synchronize];
 
     NSManagedObjectID *accountID = account.objectID;
-    void (^notifyAccountChange)() = ^{
+    void (^notifyAccountChange)(void) = ^{
         NSManagedObjectContext *mainContext = [[ContextManager sharedInstance] mainContext];
         NSManagedObject *accountInContext = [mainContext existingObjectWithID:accountID error:nil];
         [[NSNotificationCenter defaultCenter] postNotificationName:WPAccountDefaultWordPressComAccountChangedNotification object:accountInContext];
@@ -102,19 +102,29 @@ NSString * const WPAccountEmailAndDefaultBlogUpdatedNotification = @"WPAccountEm
     [[PushNotificationsManager shared] unregisterDeviceToken];
 
     WPAccount *account = [self defaultWordPressComAccount];
-    if (account) {
-        [self.managedObjectContext deleteObject:account];
+    if (account == nil) {
+        return;
     }
+    [self.managedObjectContext deleteObject:account];
 
     [[ContextManager sharedInstance] saveContextAndWait:self.managedObjectContext];
     
     // Clear WordPress.com cookies
-    NSArray *wpcomCookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
-    for (NSHTTPCookie *cookie in wpcomCookies) {
-        if (cookie.domain.isWordPressComPath) {
-            [[NSHTTPCookieStorage sharedHTTPCookieStorage] deleteCookie:cookie];
-        }
+    NSArray<id<CookieJar>> *cookieJars;
+    if (@available(iOS 11.0, *)) {
+        cookieJars = @[
+                       (id<CookieJar>)[NSHTTPCookieStorage sharedHTTPCookieStorage],
+                       (id<CookieJar>)[[WKWebsiteDataStore defaultDataStore] httpCookieStore]
+                       ];
+    } else {
+        cookieJars = @[
+                       (id<CookieJar>)[NSHTTPCookieStorage sharedHTTPCookieStorage]
+                       ];
     }
+    for (id<CookieJar> cookieJar in cookieJars) {
+        [cookieJar removeWordPressComCookiesWithCompletion:^{}];
+    }
+
     [[NSURLCache sharedURLCache] removeAllCachedResponses];
 
     // Remove defaults
@@ -178,7 +188,7 @@ NSString * const WPAccountEmailAndDefaultBlogUpdatedNotification = @"WPAccountEm
 }
 
 
-- (void)requestAuthenticationLink:(NSString *)email success:(void (^)())success failure:(void (^)(NSError *error))failure
+- (void)requestAuthenticationLink:(NSString *)email success:(void (^)(void))success failure:(void (^)(NSError *error))failure
 {
     id<AccountServiceRemote> remote = [self remoteForAnonymous];
     [remote requestWPComAuthLinkForEmail:email
@@ -194,6 +204,20 @@ NSString * const WPAccountEmailAndDefaultBlogUpdatedNotification = @"WPAccountEm
                                          failure(error);
                                      }
                                  }];
+}
+
+- (void)requestVerificationEmail:(void (^)(void))success failure:(void (^)(NSError * _Nonnull))failure
+{
+    id<AccountServiceRemote> remote = [self remoteForAccount:[self defaultWordPressComAccount]];
+    [remote requestVerificationEmailWithSucccess:^{
+        if (success) {
+            success();
+        }
+    } failure:^(NSError *error) {
+        if (failure) {
+            failure(error);
+        }
+    }];
 }
 
 
@@ -267,7 +291,9 @@ NSString * const WPAccountEmailAndDefaultBlogUpdatedNotification = @"WPAccountEm
     return [results firstObject];
 }
 
-- (void)updateUserDetailsForAccount:(WPAccount *)account success:(void (^)())success failure:(void (^)(NSError *error))failure
+- (void)updateUserDetailsForAccount:(WPAccount *)account
+                           success:(nullable void (^)(void))success
+                           failure:(nullable void (^)(NSError * _Nonnull))failure
 {
     NSAssert(account, @"Account can not be nil");
     NSAssert(account.username, @"account.username can not be nil");

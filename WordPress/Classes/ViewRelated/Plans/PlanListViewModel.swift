@@ -37,8 +37,9 @@ enum PlanListViewModel {
         case .ready:
             // Currently unused as we've removed the terms and conditions footer until we re-add purchasing at a later date
             let _ = { [weak presenter] in
-                let webViewController = WPWebViewController(url: URL(string: WPAutomatticTermsOfServiceURL)!)
-                let navController = UINavigationController(rootViewController: webViewController!)
+                let url = URL(string: WPAutomatticTermsOfServiceURL)!
+                let webViewController = WebViewControllerFactory.controller(url: url)
+                let navController = UINavigationController(rootViewController: webViewController)
                 presenter?.present(navController, animated: true, completion: nil)
             }
 
@@ -56,10 +57,10 @@ enum PlanListViewModel {
         // Non-breaking space entity prevents an orphan word if the text wraps
         let tos = NSLocalizedString("By checking out, you agree to our <a>fascinating terms and&nbsp;conditions</a>.", comment: "Terms of Service link displayed when a user is making a purchase. Text inside <a> tags will be highlighted.")
 
-        let attributes: StyledHTMLAttributes = [ .BodyAttribute: [ NSFontAttributeName: UIFont.systemFont(ofSize: 12),
-                                                                   NSForegroundColorAttributeName: bodyColor ],
-                                                 .ATagAttribute: [ NSUnderlineStyleAttributeName: NSUnderlineStyle.styleNone.rawValue as AnyObject,
-                                                                   NSForegroundColorAttributeName: linkColor] ]
+        let attributes: StyledHTMLAttributes = [ .BodyAttribute: [ .font: UIFont.systemFont(ofSize: 12),
+                                                                   .foregroundColor: bodyColor ],
+                                                 .ATagAttribute: [ .underlineStyle: NSUnderlineStyle.styleNone.rawValue,
+                                                                   .foregroundColor: linkColor] ]
 
         let attributedTos = NSAttributedString.attributedStringWithHTML(tos, attributes: attributes)
 

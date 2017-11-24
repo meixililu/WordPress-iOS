@@ -6,12 +6,14 @@ public extension WPAppAnalytics {
     public enum SelectedMediaOrigin: CustomStringConvertible {
         case inlinePicker
         case fullScreenPicker
+        case documentPicker
         case none
 
         public var description: String {
             switch self {
             case .inlinePicker: return "inline_picker"
             case .fullScreenPicker: return "full_screen_picker"
+            case .documentPicker: return "document_picker"
             case .none: return "not_identified"
             }
         }
@@ -35,7 +37,7 @@ public extension WPAppAnalytics {
      - parameter media: the Media object
      - returns: Dictionary
      */
-    public class func properties(for media: Media) -> Dictionary<String, Any> {
+    @objc public class func properties(for media: Media) -> Dictionary<String, Any> {
         var properties = [String: Any]()
         properties[MediaProperties.mime] = media.mimeType()
         if let fileExtension = media.fileExtension(), !fileExtension.isEmpty {

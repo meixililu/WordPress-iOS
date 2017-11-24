@@ -6,19 +6,24 @@ import Aztec
 
 class AztecAttachmentViewController: UITableViewController {
 
-    var attachment: ImageAttachment? {
+    @objc var attachment: ImageAttachment? {
         didSet {
             if let attachment = attachment {
                 alignment = attachment.alignment
+                linkURL = attachment.linkURL
                 size = attachment.size
+                alt = attachment.alt
             }
         }
     }
 
     var alignment = ImageAttachment.Alignment.none
+    var linkURL: URL?
     var size = ImageAttachment.Size.full
+    @objc var alt: String?
 
-    var onUpdate: ((ImageAttachment.Alignment, ImageAttachment.Size) -> Void)?
+    var onUpdate: ((_ alignment: ImageAttachment.Alignment, _ size: ImageAttachment.Size, _ linkURL: URL?, _ altText: String?) -> Void)?
+    @objc var onCancel: (() -> Void)?
 
     fileprivate var handler: ImmuTableViewHandler!
 
@@ -50,10 +55,10 @@ class AztecAttachmentViewController: UITableViewController {
 
         WPStyleGuide.configureColors(for: view, andTableView: tableView)
 
-        let cancelButton = UIBarButtonItem(barButtonSystemItem: .cancel, target:self, action: #selector(AztecAttachmentViewController.handleCancelButtonTapped))
+        let cancelButton = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(AztecAttachmentViewController.handleCancelButtonTapped))
         navigationItem.leftBarButtonItem = cancelButton
 
-        let doneButton = UIBarButtonItem(barButtonSystemItem: .done, target:self, action: #selector(AztecAttachmentViewController.handleDoneButtonTapped))
+        let doneButton = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(AztecAttachmentViewController.handleDoneButtonTapped))
         navigationItem.rightBarButtonItem = doneButton
     }
 
@@ -72,17 +77,29 @@ class AztecAttachmentViewController: UITableViewController {
             value: alignment.localizedString,
             action: displayAlignmentSelector)
 
+        let linkToRow = EditableTextRow(
+            title: NSLocalizedString("Link To", comment: "Image link option title."),
+            value: linkURL?.absoluteString ?? "",
+            action: displayLinkTextfield)
+
         let sizeRow = EditableTextRow(
             title: NSLocalizedString("Size", comment: "Image size option title."),
             value: size.localizedString,
             action: displaySizeSelector)
+
+        let altRow = EditableTextRow(
+            title: NSLocalizedString("Alt Text", comment: "Image alt attribute option title."),
+            value: alt ?? "",
+            action: displayAltTextfield)
 
         return ImmuTable(sections: [
             ImmuTableSection(
                 headerText: displaySettingsHeader,
                 rows: [
                     alignmentRow,
+                    linkToRow,
                     sizeRow,
+                    altRow
                 ],
                 footerText: nil)
             ])
@@ -90,6 +107,24 @@ class AztecAttachmentViewController: UITableViewController {
 
 
     // MARK: - Actions
+
+    private func displayAltTextfield(row: ImmuTableRow) {
+        let editableRow = row as! EditableTextRow
+        let hint = NSLocalizedString("Image Alt", comment: "Hint for image alt on image settings.")
+        self.pushSettingsController(for: editableRow, hint: hint, settingsTextMode: .text) { value in
+            self.alt = value
+            self.tableView.reloadData()
+        }
+    }
+
+    private func displayLinkTextfield(row: ImmuTableRow) {
+        let editableRow = row as! EditableTextRow
+        let hint = NSLocalizedString("Image Link", comment: "Hint for image link on image settings.")
+        self.pushSettingsController(for: editableRow, hint: hint, settingsTextMode: .URL) { value in
+            self.linkURL = URL(string: value)
+            self.tableView.reloadData()
+        }
+    }
 
     func displayAlignmentSelector(row: ImmuTableRow) {
 
@@ -103,7 +138,7 @@ class AztecAttachmentViewController: UITableViewController {
 
         let dict: [String: Any] = [
             SettingsSelectionDefaultValueKey: alignment,
-            SettingsSelectionTitleKey: NSLocalizedString("Alignment", comment:"Title of the screen for choosing an image's alignment."),
+            SettingsSelectionTitleKey: NSLocalizedString("Alignment", comment: "Title of the screen for choosing an image's alignment."),
             SettingsSelectionTitlesKey: titles,
             SettingsSelectionValuesKey: values,
             SettingsSelectionCurrentValueKey: currentValue
@@ -158,15 +193,31 @@ class AztecAttachmentViewController: UITableViewController {
 
     // MARK: - Helper methods
 
-    func handleCancelButtonTapped(sender: UIBarButtonItem) {
+    @objc func handleCancelButtonTapped(sender: UIBarButtonItem) {
+        onCancel?()
         dismiss(animated: true, completion: nil)
     }
 
-    func handleDoneButtonTapped(sender: UIBarButtonItem) {
-        onUpdate?(alignment, size)
+    @objc func handleDoneButtonTapped(sender: UIBarButtonItem) {
+        let checkedAlt = alt == "" ? nil : alt
+        onUpdate?(alignment, size, linkURL, checkedAlt)
         dismiss(animated: true, completion: nil)
     }
 
+    private func pushSettingsController(for row: EditableTextRow,
+                                        hint: String? = nil,
+                                        settingsTextMode: SettingsTextModes,
+                                        onValueChanged: @escaping SettingsTextChanged) {
+        let title = row.title
+        let value = row.value
+        let controller = SettingsTextViewController(text: value, placeholder: "\(title)...", hint: hint)
+
+        controller.title = title
+        controller.mode = settingsTextMode
+        controller.onValueChanged = onValueChanged
+
+        navigationController?.pushViewController(controller, animated: true)
+    }
 }
 
 extension ImageAttachment.Alignment {
@@ -188,7 +239,7 @@ extension ImageAttachment.Size {
         case .thumbnail: return NSLocalizedString("Thumbnail", comment: "Thumbnail image size. Should be the same as in core WP.")
         case .medium: return NSLocalizedString("Medium", comment: "Medium image size. Should be the same as in core WP.")
         case .large: return NSLocalizedString("Large", comment: "Large image size. Should be the same as in core WP.")
-        case .full: return NSLocalizedString("Full Size", comment: "Full size image. (default). Should be the same as in core WP.")
+        case .none, .full: return NSLocalizedString("Full Size", comment: "Full size image. (default). Should be the same as in core WP.")
         }
     }
 }

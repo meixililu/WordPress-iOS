@@ -12,7 +12,7 @@ extension String {
             return self
         }
 
-        let range   = NSMakeRange(0, characters.count)
+        let range   = NSMakeRange(0, count)
         var offset  = 0
 
         detector.enumerateMatches(in: self, options: [], range: range) { (result, flags, stop) in
@@ -25,7 +25,7 @@ extension String {
             let anchoredURL     = "<a href=\"\(rawURL)\">\(rawURL)</a>"
 
             output.replaceCharacters(in: rangeWithOffset, with: anchoredURL)
-            offset += anchoredURL.characters.count - rawURL.characters.count
+            offset += anchoredURL.count - rawURL.count
         }
 
         return output as String
@@ -35,8 +35,19 @@ extension String {
     ///
     func splitContentTextIntoSubjectAndBody() -> (subject: String, body: String) {
         let indexOfFirstNewline = rangeOfCharacter(from: CharacterSet.newlines)
+
+#if swift(>=4.0)
+        var firstLineOfText = self
+        var restOfText = String()
+
+        if let indexOfFirstNewline = indexOfFirstNewline {
+            firstLineOfText = String(prefix(upTo: indexOfFirstNewline.lowerBound))
+            restOfText = String(self[indexOfFirstNewline.upperBound...])
+        }
+#else
         let firstLineOfText = indexOfFirstNewline != nil ? substring(to: indexOfFirstNewline!.lowerBound) : self
         let restOfText = indexOfFirstNewline != nil ? substring(from: indexOfFirstNewline!.upperBound) : ""
+#endif
 
         return (firstLineOfText, restOfText)
     }

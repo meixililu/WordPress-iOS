@@ -168,7 +168,7 @@ extension BlogSettings {
         fileprivate static let minimumValue  = 2
         fileprivate static let maximumValue  = 10
 
-        fileprivate static var descriptionMap: [Int : String] {
+        fileprivate static var descriptionMap: [Int: String] {
             let descriptionFormat = NSLocalizedString("%@ levels", comment: "Comments Threading Levels")
             var optionsMap = [Int: String]()
 
@@ -225,7 +225,7 @@ extension BlogSettings {
 
     /// Helper, to aid in setting SortOrder in ObjC code. True when Ascending, False otherwise.
     ///
-    var commentsSortOrderAscending: Bool {
+    @objc var commentsSortOrderAscending: Bool {
         get {
             return commentsSortOrder?.intValue == CommentsSorting.ascending.rawValue
         }

@@ -170,7 +170,7 @@
 }
 
 - (void)deleteMedia:(RemoteMedia *)media
-            success:(void (^)())success
+            success:(void (^)(void))success
             failure:(void (^)(NSError *))failure
 {
     NSParameterAssert([media.mediaID longLongValue] > 0);
@@ -243,7 +243,8 @@
 
     remoteMedia.caption = [xmlRPC stringForKey:@"caption"];
     remoteMedia.descriptionText = [xmlRPC stringForKey:@"description"];
-    remoteMedia.alt = [xmlRPC stringForKey:@"alt"];
+    // Sergio (2017-10-26): This field isn't returned by the XMLRPC API so we assuming empty string
+    remoteMedia.alt = @"";
     remoteMedia.extension = [remoteMedia.file pathExtension];
     remoteMedia.length = [xmlRPC numberForKeyPath:@"metadata.length"];
 

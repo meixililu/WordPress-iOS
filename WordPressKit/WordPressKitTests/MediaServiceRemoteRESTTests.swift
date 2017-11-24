@@ -26,7 +26,7 @@ class MediaServiceRemoteRESTTests: XCTestCase {
     func testGetMediaWithIDPath() {
 
         let id = 1
-        let expectedPath = "v1.1/sites/\(siteID)/media/\(id)"
+        let expectedPath = mediaServiceRemote.path(forEndpoint: "sites/\(siteID)/media/\(id)", withVersion: ._1_1)
         mediaServiceRemote.getMediaWithID(id as NSNumber!, success: nil, failure: nil)
         XCTAssertTrue(mockRemoteApi.getMethodCalled, "Wrong method, expected GET got \(mockRemoteApi.methodCalled())")
         XCTAssertEqual(mockRemoteApi.URLStringPassedIn, expectedPath, "Wrong path")
@@ -42,13 +42,13 @@ class MediaServiceRemoteRESTTests: XCTestCase {
             }, failure: nil)
         mockRemoteApi.successBlockPassedIn?(response as AnyObject, HTTPURLResponse())
         XCTAssertNotNil(remoteMedia)
-        XCTAssertEqual(remoteMedia?.mediaID.intValue, id)
+        XCTAssertEqual(remoteMedia?.mediaID?.intValue, id)
     }
 
     func testCreateMediaPath() {
 
         var progress: Progress? = nil
-        let expectedPath = "v1.1/sites/\(siteID)/media/new"
+        let expectedPath = mediaServiceRemote.path(forEndpoint: "sites/\(siteID)/media/new", withVersion: ._1_1)
         let media = mockRemoteMedia()
         mediaServiceRemote.uploadMedia(media, progress: &progress, success: nil, failure: nil)
         XCTAssertTrue(mockRemoteApi.postMethodCalled, "Wrong method, expected POST got \(mockRemoteApi.methodCalled())")
@@ -84,7 +84,7 @@ class MediaServiceRemoteRESTTests: XCTestCase {
     func testUpdateMediaPath() {
 
         let media = mockRemoteMedia()
-        let expectedPath = "v1.1/sites/\(siteID)/media/\(media.mediaID!)"
+        let expectedPath = mediaServiceRemote.path(forEndpoint: "sites/\(siteID)/media/\(media.mediaID!)", withVersion: ._1_1)
         mediaServiceRemote.update(media, success: nil, failure: nil)
         XCTAssertTrue(mockRemoteApi.postMethodCalled, "Wrong method, expected POST got \(mockRemoteApi.methodCalled())")
         XCTAssertEqual(mockRemoteApi.URLStringPassedIn, expectedPath, "Wrong path")
@@ -117,15 +117,14 @@ class MediaServiceRemoteRESTTests: XCTestCase {
 
     func testDeleteMediaPath() {
         let media = mockRemoteMedia()
-        let expectedPath = "v1.1/sites/\(siteID)/media/\(media.mediaID!)/delete"
+        let expectedPath = mediaServiceRemote.path(forEndpoint: "sites/\(siteID)/media/\(media.mediaID!)/delete", withVersion: ._1_1)
         mediaServiceRemote.delete(media, success: nil, failure: nil)
         XCTAssertTrue(mockRemoteApi.postMethodCalled, "Wrong method, expected POST got \(mockRemoteApi.methodCalled())")
         XCTAssertEqual(mockRemoteApi.URLStringPassedIn, expectedPath, "Wrong path")
     }
 
     func testGetMediaLibraryPath() {
-
-        let expectedPath = "v1.1/sites/\(siteID)/media"
+        let expectedPath = mediaServiceRemote.path(forEndpoint: "sites/\(siteID)/media", withVersion: ._1_1)
         mediaServiceRemote.getMediaLibrary(success: nil, failure: nil)
         XCTAssertTrue(mockRemoteApi.getMethodCalled, "Wrong method, expected GET got \(mockRemoteApi.methodCalled())")
         XCTAssertEqual(mockRemoteApi.URLStringPassedIn, expectedPath, "Wrong path")
@@ -172,7 +171,7 @@ class MediaServiceRemoteRESTTests: XCTestCase {
 
     func testGetMediaLibraryCountPath() {
 
-        let expectedPath = "v1.1/sites/\(siteID)/media"
+        let expectedPath = mediaServiceRemote.path(forEndpoint: "sites/\(siteID)/media", withVersion: ._1_1)
         mediaServiceRemote.getMediaLibraryCount(forType: nil, withSuccess: nil, failure: nil)
         XCTAssertTrue(mockRemoteApi.getMethodCalled, "Wrong method, expected GET got \(mockRemoteApi.methodCalled())")
         XCTAssertEqual(mockRemoteApi.URLStringPassedIn, expectedPath, "Wrong path")
@@ -221,18 +220,18 @@ class MediaServiceRemoteRESTTests: XCTestCase {
                                                       "width": width]
 
         let remoteMedia = mediaServiceRemote.remoteMedia(fromJSONDictionary: jsonDictionary)
-        XCTAssertEqual(remoteMedia.mediaID.intValue, id)
-        XCTAssertEqual(remoteMedia.url.absoluteString, url)
-        XCTAssertEqual(remoteMedia.guid.absoluteString, guid)
+        XCTAssertEqual(remoteMedia.mediaID?.intValue, id)
+        XCTAssertEqual(remoteMedia.url?.absoluteString, url)
+        XCTAssertEqual(remoteMedia.guid?.absoluteString, guid)
         XCTAssertEqual(remoteMedia.date, Date.dateWithISO8601String(date)!)
-        XCTAssertEqual(remoteMedia.postID.intValue, postID)
+        XCTAssertEqual(remoteMedia.postID?.intValue, postID)
         XCTAssertEqual(remoteMedia.file, file)
         XCTAssertEqual(remoteMedia.mimeType, mimeType)
         XCTAssertEqual(remoteMedia.title, title)
         XCTAssertEqual(remoteMedia.caption, caption)
         XCTAssertEqual(remoteMedia.descriptionText, description)
         XCTAssertEqual(remoteMedia.alt, alt)
-        XCTAssertEqual(remoteMedia.height.intValue, height)
-        XCTAssertEqual(remoteMedia.width.intValue, width)
+        XCTAssertEqual(remoteMedia.height?.intValue, height)
+        XCTAssertEqual(remoteMedia.width?.intValue, width)
     }
 }

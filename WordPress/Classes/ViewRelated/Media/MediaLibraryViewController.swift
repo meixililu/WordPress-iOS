@@ -3,13 +3,15 @@ import Gridicons
 import SVProgressHUD
 import WordPressShared
 import WPMediaPicker
+import MobileCoreServices
+
 
 /// Displays the user's media library in a grid
 ///
 class MediaLibraryViewController: UIViewController {
     fileprivate static let restorationIdentifier = "MediaLibraryViewController"
 
-    let blog: Blog
+    @objc let blog: Blog
 
     fileprivate let pickerViewController: WPMediaPickerViewController
     fileprivate let pickerDataSource: MediaLibraryPickerDataSource
@@ -19,7 +21,12 @@ class MediaLibraryViewController: UIViewController {
 
     fileprivate var selectedAsset: Media? = nil
 
-    private let defaultSearchBarHeight: CGFloat = 44.0
+    fileprivate var capturePresenter: WPMediaCapturePresenter?
+
+    // After 99% progress, we'll count a media item as being uploaded, and we'll
+    // show an indeterminate spinner as the server processes it.
+    fileprivate static let uploadCompleteProgress: Double = 0.99
+
     lazy fileprivate var searchBarContainer: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -51,16 +58,31 @@ class MediaLibraryViewController: UIViewController {
         return coordinator
     }()
 
-    var searchQuery: String? = nil
+    @objc var searchQuery: String? = nil
+
+    private var uploadCoordinatorUUID: UUID? = nil
+
+    // Only used during testing phase of upload coordinator development.
+    // Remove when upload coordinator is properly integrated into the media library.
+    // @frosty 2017-11-01
+    //
+    fileprivate var useUploadCoordinator = false
 
     // MARK: - Initializers
 
-    init(blog: Blog) {
-        WPMediaCollectionViewCell.appearance().placeholderTintColor = WPStyleGuide.darkGrey()
+    @objc init(blog: Blog) {
+        WPMediaCollectionViewCell.appearance().placeholderTintColor = WPStyleGuide.greyLighten30()
+        WPMediaCollectionViewCell.appearance().placeholderBackgroundColor = WPStyleGuide.darkGrey()
+        WPMediaCollectionViewCell.appearance().loadingBackgroundColor = WPStyleGuide.lightGrey()
 
         self.blog = blog
         self.pickerViewController = WPMediaPickerViewController()
+        self.pickerViewController.registerClass(forReusableCellOverlayViews: MediaCellProgressView.self)
         self.pickerDataSource = MediaLibraryPickerDataSource(blog: blog)
+
+        if FeatureFlag.asyncUploadsInMediaLibrary.enabled {
+            self.pickerDataSource.includeUnsyncedMedia = true
+        }
 
         super.init(nibName: nil, bundle: nil)
 
@@ -76,6 +98,7 @@ class MediaLibraryViewController: UIViewController {
 
     deinit {
         unregisterChangeObserver()
+        unregisterUploadCoordinatorObserver()
     }
 
     private func configurePickerViewController() {
@@ -91,6 +114,8 @@ class MediaLibraryViewController: UIViewController {
 
     // MARK: - View Loading
 
+    @objc var uploadObserverUUID: UUID?
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -104,12 +129,15 @@ class MediaLibraryViewController: UIViewController {
         addNoResultsView()
 
         registerChangeObserver()
+        registerUploadCoordinatorObserver()
 
         updateViewState(for: pickerDataSource.totalAssetCount)
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+
+        resetNavigationColors()
 
         registerForKeyboardNotifications()
         registerForHUDNotifications()
@@ -124,6 +152,15 @@ class MediaLibraryViewController: UIViewController {
                 searchBar.text = searchQuery
             }
         }
+    }
+
+    /*
+     This is to restore the navigation bar colors after the UIDocumentPickerViewController has been dismissed,
+     either by uploading media or cancelling. Doing this in the UIDocumentPickerDelegate methods either did nothing
+     or the resetting wasn't permanent.
+     */
+    fileprivate func resetNavigationColors() {
+        WPStyleGuide.configureNavigationBarAppearance()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -170,24 +207,50 @@ class MediaLibraryViewController: UIViewController {
     }
 
     private func addSearchBarContainer() {
+        searchBarContainer.backgroundColor = searchBar.barTintColor
+
         stackView.insertArrangedSubview(searchBarContainer, at: 0)
 
         NSLayoutConstraint.activate([
             searchBarContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             searchBarContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-        ])
+            ])
 
-        let heightConstraint = searchBarContainer.heightAnchor.constraint(equalToConstant: defaultSearchBarHeight)
-        heightConstraint.priority = UILayoutPriorityDefaultLow
+        wrapSearchBarInPaddingView()
+
+        let height = searchBar.intrinsicContentSize.height
+        let heightConstraint = searchBarContainer.heightAnchor.constraint(equalToConstant: height)
+        heightConstraint.priority = .defaultLow
         heightConstraint.isActive = true
 
-        let expandedHeightConstraint = searchBarContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: defaultSearchBarHeight)
-        expandedHeightConstraint.priority = UILayoutPriorityRequired
+        let expandedHeightConstraint = searchBarContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: height)
+        expandedHeightConstraint.priority = .required
         expandedHeightConstraint.isActive = true
 
         searchBarContainer.layoutIfNeeded()
-        searchBarContainer.addSubview(searchBar)
         searchBar.sizeToFit()
+    }
+
+    private func wrapSearchBarInPaddingView() {
+        let paddingView = UIView()
+        paddingView.translatesAutoresizingMaskIntoConstraints = false
+        searchBarContainer.addSubview(paddingView)
+        paddingView.addSubview(searchBar)
+
+        var leading = searchBarContainer.leadingAnchor
+        var trailing = searchBarContainer.trailingAnchor
+
+        if #available(iOS 11.0, *) {
+            leading = searchBarContainer.safeAreaLayoutGuide.leadingAnchor
+            trailing = searchBarContainer.safeAreaLayoutGuide.trailingAnchor
+        }
+
+        NSLayoutConstraint.activate([
+            paddingView.leadingAnchor.constraint(equalTo: leading),
+            paddingView.trailingAnchor.constraint(equalTo: trailing),
+            paddingView.topAnchor.constraint(equalTo: searchBarContainer.topAnchor),
+            paddingView.bottomAnchor.constraint(equalTo: searchBarContainer.bottomAnchor),
+            ])
     }
 
     private func addNoResultsView() {
@@ -234,9 +297,22 @@ class MediaLibraryViewController: UIViewController {
 
     @objc private func statusHUDWasTapped(_ notification: Notification) {
         if mediaProgressCoordinator.isRunning {
-            mediaProgressCoordinator.cancelAllPendingUploads()
+            mediaProgressCoordinator.cancelAndStopAllInProgressMedia()
             SVProgressHUD.dismiss()
         }
+    }
+
+    fileprivate func prepareMediaProgressForNumberOfAssets(_ count: Int) {
+        showPreparingProgressHUD()
+        mediaProgressCoordinator.track(numberOfItems: count)
+        // Wait until all assets are uploaded before we update the collection view
+        pickerDataSource.isPaused = true
+    }
+
+    fileprivate func showPreparingProgressHUD() {
+        SVProgressHUD.setDefaultMaskType(.clear)
+        SVProgressHUD.setMinimumDismissTimeInterval(1.0)
+        SVProgressHUD.show(withStatus: NSLocalizedString("Preparing...\nTap to cancel", comment: "Text displayed in HUD while preparing to upload media items."))
     }
 
     // MARK: - Update view state
@@ -303,7 +379,7 @@ class MediaLibraryViewController: UIViewController {
         noResultsView?.sizeToFit()
     }
 
-    func updateNoResultsForFetching() {
+    @objc func updateNoResultsForFetching() {
         noResultsView?.titleText = NSLocalizedString("Fetching media...", comment: "Title displayed whilst fetching media from the user's media library")
         noResultsView?.messageText = nil
         noResultsView?.buttonTitle = nil
@@ -328,21 +404,105 @@ class MediaLibraryViewController: UIViewController {
         }
     }
 
+    private func reloadCell(for media: Media) {
+        visibleCells(for: media).forEach { cell in
+            cell.overlayView = nil
+            cell.asset = media
+        }
+    }
+
+    private func updateCellProgress(_ progress: Double, for media: Media) {
+        visibleCells(for: media).forEach { cell in
+            if let overlayView = cell.overlayView as? MediaCellProgressView {
+                if progress < MediaLibraryViewController.uploadCompleteProgress {
+                    overlayView.progressIndicator.state = .progress(progress)
+                } else {
+                    overlayView.progressIndicator.state = .indeterminate
+                }
+            }
+        }
+    }
+
+    private func showUploadingStateForCell(for media: Media) {
+        visibleCells(for: media).forEach { cell in
+            if let overlayView = cell.overlayView as? MediaCellProgressView {
+                overlayView.progressIndicator.state = .indeterminate
+            }
+        }
+    }
+
+    private func visibleCells(for media: Media) -> [WPMediaCollectionViewCell] {
+        guard let cells = pickerViewController.collectionView?.visibleCells as? [WPMediaCollectionViewCell] else {
+            return []
+        }
+
+        return cells.filter({ ($0.asset as? Media) == media })
+    }
+
     private var hasSearchQuery: Bool {
-        return (pickerDataSource.searchQuery ?? "").characters.count > 0
+        return (pickerDataSource.searchQuery ?? "").count > 0
     }
 
     // MARK: - Actions
 
     @objc fileprivate func addTapped() {
+        if #available(iOS 11, *), FeatureFlag.iCloudFilesSupport.enabled {
+            showOptionsMenu()
+        }
+        else {
+            showMediaPicker()
+        }
+    }
+
+    private func showMediaPicker() {
         let options = WPMediaPickerOptions()
         options.showMostRecentFirst = true
         options.filter = [.all]
+
+        // If iOS11, media capture is available via showOptionsMenu()
+        if #available(iOS 11, *) {
+            // NOTE: once iCloudFilesSupport is permanently enabled, this needs to be false.
+            options.allowCaptureOfMedia = !(FeatureFlag.iCloudFilesSupport.enabled)
+        }
+
         let picker = WPNavigationMediaPickerViewController(options: options)
         picker.dataSource = WPPHAssetDataSource()
         picker.delegate = self
 
         present(picker, animated: true, completion: nil)
+    }
+
+    private func showOptionsMenu() {
+        let menuAlert = UIAlertController(title: nil, message: nil, preferredStyle: UIAlertControllerStyle.actionSheet)
+
+        if WPMediaCapturePresenter.isCaptureAvailable() {
+            menuAlert.addDefaultActionWithTitle(NSLocalizedString("Take Photo or Video", comment: "Menu option for taking an image or video with the device's camera.")) { _ in
+                self.presentMediaCapture()
+            }
+        }
+
+        menuAlert.addDefaultActionWithTitle(NSLocalizedString("Photo Library", comment: "Menu option for selecting media from the device's photo library.")) { _ in
+            self.showMediaPicker()
+        }
+
+        menuAlert.addDefaultActionWithTitle(NSLocalizedString("Other Apps", comment: "Menu option used for adding media from other applications.")) { _ in
+            self.showDocumentPicker()
+        }
+
+        if FeatureFlag.asyncUploadsInMediaLibrary.enabled {
+            menuAlert.addDefaultActionWithTitle("Photo Library (Async - Debug)") { _ in
+                self.useUploadCoordinator = true
+                self.showMediaPicker()
+            }
+        }
+
+        menuAlert.addCancelActionWithTitle(NSLocalizedString("Cancel", comment: "Cancel button"))
+
+        // iPad support
+        menuAlert.popoverPresentationController?.sourceView = view
+        menuAlert.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItem
+
+        present(menuAlert, animated: true, completion: nil)
     }
 
     @objc private func editTapped() {
@@ -392,13 +552,11 @@ class MediaLibraryViewController: UIViewController {
         updateProgress(nil)
 
         let service = MediaService(managedObjectContext: ContextManager.sharedInstance().mainContext)
-        service.deleteMedia(assets,
-                            progress: updateProgress,
-                            success: { [weak self] in
-                                WPAppAnalytics.track(.mediaLibraryDeletedItems, withProperties: ["number_of_items_deleted": deletedItemsCount], with: self?.blog)
-                                SVProgressHUD.showSuccess(withStatus: NSLocalizedString("Deleted!", comment: "Text displayed in HUD after successfully deleting a media item"))
-                                self?.isEditing = false
-        }, failure: { error in
+        service.deleteMedia(assets, progress: updateProgress, success: { [weak self] () in
+            WPAppAnalytics.track(.mediaLibraryDeletedItems, withProperties: ["number_of_items_deleted": deletedItemsCount], with: self?.blog)
+            SVProgressHUD.showSuccess(withStatus: NSLocalizedString("Deleted!", comment: "Text displayed in HUD after successfully deleting a media item"))
+            self?.isEditing = false
+        }, failure: { () in
             SVProgressHUD.showError(withStatus: NSLocalizedString("Unable to delete all media items.", comment: "Text displayed in HUD if there was an error attempting to delete a group of media items."))
         })
     }
@@ -442,6 +600,149 @@ class MediaLibraryViewController: UIViewController {
             pickerDataSource.unregisterChangeObserver(mediaLibraryChangeObserverKey)
         }
     }
+
+    // MARK: - Upload Coordinator Observer
+
+    private func registerUploadCoordinatorObserver() {
+        guard FeatureFlag.asyncUploadsInMediaLibrary.enabled else {
+            return
+        }
+
+        uploadObserverUUID = MediaUploadCoordinator.shared.addObserver({ [weak self] (media, state) in
+            switch state {
+            case .progress(let progress) :
+                self?.updateCellProgress(progress, for: media)
+                break
+            case .uploading:
+                self?.showUploadingStateForCell(for: media)
+            case .ended:
+                self?.reloadCell(for: media)
+            }
+            }, for: nil)
+    }
+
+    private func unregisterUploadCoordinatorObserver() {
+        if let uuid = uploadObserverUUID {
+            MediaUploadCoordinator.shared.removeObserver(withUUID: uuid)
+        }
+    }
+
+    // MARK: - Document Picker
+
+    private func showDocumentPicker() {
+        let docTypes = [String(kUTTypeImage), String(kUTTypeMovie)]
+        let docPicker = UIDocumentPickerViewController(documentTypes: docTypes, in: .import)
+        docPicker.delegate = self
+        WPStyleGuide.configureDocumentPickerNavBarAppearance()
+        present(docPicker, animated: true, completion: nil)
+    }
+
+    // MARK: - Upload Media
+
+    fileprivate func uploadMedia(_ media: Media?, error: Error?, mediaID: String) {
+        let service = MediaService(managedObjectContext: ContextManager.sharedInstance().mainContext)
+
+        guard let media = media else {
+            if let error = error as NSError? {
+                mediaProgressCoordinator.attach(error: error, toMediaID: mediaID)
+            }
+            return
+        }
+
+        var uploadProgress: Progress? = nil
+        service.uploadMedia(media, progress: &uploadProgress, success: { [weak self] in
+            self?.unpauseDataSource()
+            self?.trackUploadFor(media)
+            }, failure: { error in
+                self.mediaProgressCoordinator.attach(error: error as NSError, toMediaID: mediaID)
+                self.unpauseDataSource()
+        })
+
+        if let progress = uploadProgress {
+            mediaProgressCoordinator.track(progress: progress, of: media, withIdentifier: mediaID)
+        }
+    }
+
+    // MARK: - Upload Media from Camera
+
+    private func presentMediaCapture() {
+        capturePresenter = WPMediaCapturePresenter(presenting: self)
+        capturePresenter!.completionBlock = { [weak self] mediaInfo in
+            if let mediaInfo = mediaInfo as NSDictionary? {
+                self?.processMediaCaptured(mediaInfo)
+            }
+            self?.capturePresenter = nil
+        }
+
+        capturePresenter!.presentCapture()
+    }
+
+    private func processMediaCaptured(_ mediaInfo: NSDictionary) {
+
+        let completionBlock: WPMediaAddedBlock = { [weak self] media, error in
+            if error != nil || media == nil {
+                print("Adding media failed: ", error?.localizedDescription ?? "no media")
+                return
+            }
+            self?.addMediaAssets([media!])
+        }
+
+        guard let mediaType = mediaInfo[UIImagePickerControllerMediaType] as? String else { return }
+
+        switch mediaType {
+        case String(kUTTypeImage):
+            if let image = mediaInfo[UIImagePickerControllerOriginalImage] as? UIImage,
+                let metadata = mediaInfo[UIImagePickerControllerMediaMetadata] as? [AnyHashable: Any] {
+                WPPHAssetDataSource().add(image, metadata: metadata, completionBlock: completionBlock)
+            }
+        case String(kUTTypeMovie):
+            if let mediaURL = mediaInfo[UIImagePickerControllerMediaURL] as? URL {
+                WPPHAssetDataSource().addVideo(from: mediaURL, completionBlock: completionBlock)
+            }
+        default:
+            break
+        }
+    }
+
+    private func addMediaAssets(_ assets: NSArray) {
+
+        guard assets.count > 0 else { return }
+
+        prepareMediaProgressForNumberOfAssets(assets.count)
+
+        for asset in assets {
+            if let asset = asset as? PHAsset {
+                makeAndUploadMediaWith(asset)
+            }
+        }
+    }
+}
+
+// MARK: - UIDocumentPickerDelegate
+
+extension MediaLibraryViewController: UIDocumentPickerDelegate {
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+
+        prepareMediaProgressForNumberOfAssets(urls.count)
+
+        for documentURL in urls {
+            makeAndUploadMediaWithURL(documentURL)
+        }
+    }
+
+    private func makeAndUploadMediaWithURL(_ url: URL) {
+        let service = MediaService(managedObjectContext: ContextManager.sharedInstance().mainContext)
+        service.createMedia(url: url,
+                            forBlog: blog.objectID,
+                            thumbnailCallback: nil,
+                            completion: { [weak self] media, error in
+                                self?.uploadMedia(media, error: error, mediaID: url.lastPathComponent)
+        })
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        dismiss(animated: true, completion: nil)
+    }
 }
 
 // MARK: - WPNoResultsViewDelegate
@@ -475,7 +776,7 @@ extension MediaLibraryViewController: UISearchBarDelegate {
         searchBar.resignFirstResponder()
     }
 
-    func clearSearch() {
+    @objc func clearSearch() {
         searchQuery = nil
         searchBar.text = nil
         pickerDataSource.searchQuery = nil
@@ -502,14 +803,17 @@ extension MediaLibraryViewController: WPMediaPickerViewControllerDelegate {
         guard let assets = assets as? [PHAsset],
             assets.count > 0 else { return }
 
-        SVProgressHUD.setDefaultMaskType(.clear)
-        SVProgressHUD.setMinimumDismissTimeInterval(1.0)
-        SVProgressHUD.show(withStatus: NSLocalizedString("Preparing...\nTap to cancel", comment: "Text displayed in HUD while preparing to upload media items."))
+        if FeatureFlag.asyncUploadsInMediaLibrary.enabled && useUploadCoordinator {
+            useUploadCoordinator = false
 
-        mediaProgressCoordinator.track(numberOfItems: assets.count)
+            for asset in assets {
+                MediaUploadCoordinator.shared.addMedia(from: asset, to: blog)
+            }
 
-        // Wait until all assets are uploaded before we update the collection view
-        pickerDataSource.isPaused = true
+            return
+        }
+
+        prepareMediaProgressForNumberOfAssets(assets.count)
 
         for asset in assets {
             makeAndUploadMediaWith(asset)
@@ -517,7 +821,27 @@ extension MediaLibraryViewController: WPMediaPickerViewControllerDelegate {
     }
 
     func mediaPickerControllerDidCancel(_ picker: WPMediaPickerViewController) {
+        useUploadCoordinator = false
+
         dismiss(animated: true, completion: nil)
+    }
+
+    func mediaPickerController(_ picker: WPMediaPickerViewController, willShowOverlayView overlayView: UIView, forCellFor asset: WPMediaAsset) {
+        if let overlayView = overlayView as? MediaCellProgressView,
+            let media = asset as? Media {
+            if media.remoteStatus == .processing {
+                overlayView.progressIndicator.state = .indeterminate
+            }
+        }
+    }
+
+    func mediaPickerController(_ picker: WPMediaPickerViewController, shouldShowOverlayViewForCellFor asset: WPMediaAsset) -> Bool {
+        if FeatureFlag.asyncUploadsInMediaLibrary.enabled,
+            let media = asset as? Media {
+            return media.remoteStatus != .sync
+        }
+
+        return false
     }
 
     func mediaPickerController(_ picker: WPMediaPickerViewController, previewViewControllerFor asset: WPMediaAsset) -> UIViewController? {
@@ -551,7 +875,7 @@ extension MediaLibraryViewController: WPMediaPickerViewControllerDelegate {
         updateNavigationItemButtonsForCurrentAssetSelection()
     }
 
-    func updateNavigationItemButtonsForCurrentAssetSelection() {
+    @objc func updateNavigationItemButtonsForCurrentAssetSelection() {
         if isEditing {
             // Check that our selected items haven't been deleted – we're notified
             // of changes to the data source before the collection view has
@@ -575,34 +899,13 @@ extension MediaLibraryViewController: WPMediaPickerViewControllerDelegate {
         return MediaItemViewController(media: asset)
     }
 
-    func makeAndUploadMediaWith(_ asset: PHAsset) {
-        let assetID = asset.identifier()
-
+    @objc func makeAndUploadMediaWith(_ asset: PHAsset) {
         let service = MediaService(managedObjectContext: ContextManager.sharedInstance().mainContext)
         service.createMedia(with: asset,
                             forBlogObjectID: blog.objectID,
                             thumbnailCallback: nil,
                             completion: { [weak self] media, error in
-                                guard let media = media else {
-                                    if let error = error as NSError? {
-                                        self?.mediaProgressCoordinator.attach(error: error, toMediaID: assetID)
-                                    }
-                                    return
-                                }
-
-                                var uploadProgress: Progress? = nil
-                                service.uploadMedia(media, progress: &uploadProgress, success: { [weak self] in
-                                    self?.unpauseDataSource()
-                                    self?.trackUploadFor(media)
-                                }, failure: { error in
-                                    self?.mediaProgressCoordinator.attach(error: error as NSError, toMediaID: assetID)
-
-                                    self?.unpauseDataSource()
-                                })
-
-                                if let progress = uploadProgress {
-                                    self?.mediaProgressCoordinator.track(progress: progress, ofObject: media, withMediaID: assetID)
-                                }
+                                self?.uploadMedia(media, error: error, mediaID: asset.identifier())
         })
     }
 
@@ -647,6 +950,10 @@ extension MediaLibraryViewController: WPMediaPickerViewControllerDelegate {
 
         updateViewState(for: pickerDataSource.numberOfAssets())
     }
+
+    func emptyView(forMediaPickerController picker: WPMediaPickerViewController) -> UIView? {
+        return nil
+    }
 }
 
 // MARK: - State restoration
@@ -690,28 +997,28 @@ extension MediaLibraryViewController: MediaProgressCoordinatorDelegate {
     func mediaProgressCoordinatorDidFinishUpload(_ mediaProgressCoordinator: MediaProgressCoordinator) {
         guard !mediaProgressCoordinator.hasFailedMedia else {
             SVProgressHUD.showError(withStatus: NSLocalizedString("Upload failed", comment: "Text displayed in a HUD when media items have failed to upload."))
-            mediaProgressCoordinator.stopTrackingOfAllUploads()
+            mediaProgressCoordinator.stopTrackingOfAllMedia()
             return
         }
 
-        guard let progress = mediaProgressCoordinator.mediaUploadingProgress,
+        guard let progress = mediaProgressCoordinator.mediaGlobalProgress,
             !progress.isCancelled else {
-            mediaProgressCoordinator.stopTrackingOfAllUploads()
+            mediaProgressCoordinator.stopTrackingOfAllMedia()
             return
         }
 
-        mediaProgressCoordinator.stopTrackingOfAllUploads()
+        mediaProgressCoordinator.stopTrackingOfAllMedia()
         SVProgressHUD.showSuccess(withStatus: NSLocalizedString("Uploaded!", comment: "Text displayed in a HUD when media items have been uploaded successfully."))
     }
 
-    func mediaProgressCoordinator(_ mediaProgressCoordinator: MediaProgressCoordinator, progressDidChange progress: Float) {
-        guard let mediaProgress = mediaProgressCoordinator.mediaUploadingProgress,
+    func mediaProgressCoordinator(_ mediaProgressCoordinator: MediaProgressCoordinator, progressDidChange progress: Double) {
+        guard let mediaProgress = mediaProgressCoordinator.mediaGlobalProgress,
             !mediaProgress.isCancelled,
             mediaProgress.completedUnitCount < mediaProgress.totalUnitCount else {
                 return
         }
 
-        SVProgressHUD.showProgress(progress, status: NSLocalizedString("Uploading...\nTap to cancel", comment: "Text displayed in HUD while media items are being uploaded."))
+        SVProgressHUD.showProgress(Float(progress), status: NSLocalizedString("Uploading...\nTap to cancel", comment: "Text displayed in HUD while media items are being uploaded."))
     }
 }
 

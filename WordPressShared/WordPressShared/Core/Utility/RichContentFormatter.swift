@@ -40,8 +40,8 @@ import Foundation
     ///
     /// - Returns: The formatted string.
     ///
-    public class func formatContentString(_ string: String, isPrivateSite isPrivate: Bool) -> String {
-        guard string.characters.count > 0 else {
+    @objc public class func formatContentString(_ string: String, isPrivateSite isPrivate: Bool) -> String {
+        guard string.count > 0 else {
             return string
         }
 
@@ -63,25 +63,25 @@ import Foundation
     ///
     /// - Returns: The formatted string.
     ///
-    public class func removeForbiddenTags(_ string: String) -> String {
-        guard string.characters.count > 0 else {
+    @objc public class func removeForbiddenTags(_ string: String) -> String {
+        guard string.count > 0 else {
             return string
         }
         var content = string
 
         content = RegEx.styleTags.stringByReplacingMatches(in: content,
                                                                    options: .reportCompletion,
-                                                                   range: NSRange(location: 0, length: content.characters.count),
+                                                                   range: NSRange(location: 0, length: content.count),
                                                                    withTemplate: "")
 
         content = RegEx.scriptTags.stringByReplacingMatches(in: content,
                                                                     options: .reportCompletion,
-                                                                    range: NSRange(location: 0, length: content.characters.count),
+                                                                    range: NSRange(location: 0, length: content.count),
                                                                     withTemplate: "")
 
         content = RegEx.tableTags.stringByReplacingMatches(in: content,
                                                                    options: .reportCompletion,
-                                                                   range: NSRange(location: 0, length: content.characters.count),
+                                                                   range: NSRange(location: 0, length: content.count),
                                                                    withTemplate: "")
 
         return content
@@ -95,8 +95,8 @@ import Foundation
     ///
     /// - Returns: The formatted string.
     ///
-    public class func normalizeParagraphs(_ string: String) -> String {
-        guard string.characters.count > 0 else {
+    @objc public class func normalizeParagraphs(_ string: String) -> String {
+        guard string.count > 0 else {
             return string
         }
         var content = string
@@ -106,23 +106,23 @@ import Foundation
          // Convert div tags to p tags
         content = RegEx.divTagsStart.stringByReplacingMatches(in: content,
                                                                    options: .reportCompletion,
-                                                                   range: NSRange(location: 0, length: content.characters.count),
+                                                                   range: NSRange(location: 0, length: content.count),
                                                                    withTemplate: openPTag)
 
         content = RegEx.divTagsEnd.stringByReplacingMatches(in: content,
                                                                     options: .reportCompletion,
-                                                                    range: NSRange(location: 0, length: content.characters.count),
+                                                                    range: NSRange(location: 0, length: content.count),
                                                                     withTemplate: closePTag)
 
         // Remove duplicate/redundant p tags.
         content = RegEx.pTagsStart.stringByReplacingMatches(in: content,
                                                                    options: .reportCompletion,
-                                                                   range: NSRange(location: 0, length: content.characters.count),
+                                                                   range: NSRange(location: 0, length: content.count),
                                                                    withTemplate: openPTag)
 
         content = RegEx.pTagsEnd.stringByReplacingMatches(in: content,
                                                                    options: .reportCompletion,
-                                                                   range: NSRange(location: 0, length: content.characters.count),
+                                                                   range: NSRange(location: 0, length: content.count),
                                                                    withTemplate: closePTag)
 
         content = filterNewLines(content)
@@ -131,17 +131,17 @@ import Foundation
     }
 
 
-    public class func filterNewLines(_ string: String) -> String {
+    @objc public class func filterNewLines(_ string: String) -> String {
         var content = string
 
         var ranges = [NSRange]()
         // We don't want to remove new lines from preformatted tag blocks,
         // so get the ranges of such blocks.
-        let matches = RegEx.preTags.matches(in: content, options: .reportCompletion, range: NSRange(location: 0, length: content.characters.count))
+        let matches = RegEx.preTags.matches(in: content, options: .reportCompletion, range: NSRange(location: 0, length: content.count))
         if matches.count == 0 {
 
             // No blocks found, so we'll parse the whole string.
-            ranges.append(NSRange(location: 0, length: content.characters.count))
+            ranges.append(NSRange(location: 0, length: content.count))
 
         } else {
 
@@ -157,7 +157,7 @@ import Foundation
                 location = match.range.location + match.range.length
             }
 
-            length = content.characters.count - location
+            length = content.count - location
             ranges.append(NSRange(location: location, length: length))
         }
 
@@ -181,15 +181,15 @@ import Foundation
     ///
     /// - Returns: The formatted string.
     ///
-    public class func removeInlineStyles(_ string: String) -> String {
-        guard string.characters.count > 0 else {
+    @objc public class func removeInlineStyles(_ string: String) -> String {
+        guard string.count > 0 else {
             return string
         }
         var content = string
 
         content = RegEx.styleAttr.stringByReplacingMatches(in: content,
                                                                    options: .reportCompletion,
-                                                                   range: NSRange(location: 0, length: content.characters.count),
+                                                                   range: NSRange(location: 0, length: content.count),
                                                                    withTemplate: "")
 
         return content
@@ -204,8 +204,8 @@ import Foundation
     ///
     /// - Returns: The formatted string.
     ///
-    public class func resizeGalleryImageURL(_ string: String, isPrivateSite isPrivate: Bool) -> String {
-        guard string.characters.count > 0 else {
+    @objc public class func resizeGalleryImageURL(_ string: String, isPrivateSite isPrivate: Bool) -> String {
+        guard string.count > 0 else {
             return string
         }
 
@@ -241,7 +241,7 @@ import Foundation
             mImageStr.replaceOccurrences(of: srcImgURLStr,
                                          with: modifiedURL.absoluteString,
                                          options: .literal,
-                                         range: NSRange(location: 0, length: imgElementStr.characters.count))
+                                         range: NSRange(location: 0, length: imgElementStr.count))
 
             mContent.replaceCharacters(in: match.range, with: mImageStr as String)
         }
@@ -258,7 +258,7 @@ import Foundation
     ///
     /// - Returns: The value for the attribute or an empty string..
     ///
-    public class func parseValueForAttribute(_ attribute: String, inElement element: String) -> String {
+    @objc public class func parseValueForAttribute(_ attribute: String, inElement element: String) -> String {
         let elementStr = element as NSString
         var value = ""
         let attrStr = "\(attribute)=\""
@@ -282,15 +282,20 @@ import Foundation
     ///
     /// - Returns: The formatted string.
     ///
-    public class func removeTrailingBreakTags(_ string: String) -> String {
-        guard string.characters.count > 0 else {
+    @objc public class func removeTrailingBreakTags(_ string: String) -> String {
+        guard string.count > 0 else {
             return string
         }
+
         var content = string.trim()
-        let matches = RegEx.trailingBRTags.matches(in: content, options: .reportCompletion, range: NSRange(location: 0, length: content.characters.count))
+        let matches = RegEx.trailingBRTags.matches(in: content, options: .reportCompletion, range: NSRange(location: 0, length: content.count))
         if let match = matches.first {
-            let index = content.characters.index(content.startIndex, offsetBy: match.range.location)
+            let index = content.index(content.startIndex, offsetBy: match.range.location)
+#if swift(>=4.0)
+            content = String(content.prefix(upTo: index))
+#else
             content = content.substring(to: index)
+#endif
         }
 
         return content

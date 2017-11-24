@@ -7,15 +7,17 @@ protocol PostPreviewGeneratorDelegate {
 }
 
 class PostPreviewGenerator: NSObject {
-    let post: AbstractPost
-    weak var delegate: PostPreviewGeneratorDelegate?
+    @objc let post: AbstractPost
+    @objc weak var delegate: PostPreviewGeneratorDelegate?
+    fileprivate let authenticator: WebViewAuthenticator?
 
-    init(post: AbstractPost) {
+    @objc init(post: AbstractPost) {
         self.post = post
+        authenticator = WebViewAuthenticator(blog: post.blog)
         super.init()
     }
 
-    func generate() {
+    @objc func generate() {
         guard let url = post.permaLink.flatMap(URL.init(string:)),
             !post.hasLocalChanges() else {
                 showFakePreview()
@@ -34,12 +36,16 @@ class PostPreviewGenerator: NSObject {
         attemptPreview(url: url)
     }
 
-    func previewRequestFailed(error: NSError) {
+    @objc func previewRequestFailed(error: NSError) {
         showFakePreview(message:
             NSLocalizedString("There has been an error while trying to reach your site.", comment: "") +
                 " " +
                 NSLocalizedString("A simple preview is shown below.", comment: "")
         )
+    }
+
+    @objc func interceptRedirect(request: URLRequest) -> URLRequest? {
+        return authenticator?.interceptRedirect(request: request)
     }
 }
 
@@ -104,28 +110,13 @@ private extension PostPreviewGenerator {
     }
 
     func attemptCookieAuthenticatedRequest(url: URL) {
-        let blog = post.blog
-        guard let loginURL = URL(string: blog.loginUrl()),
-            let username = blog.usernameForSite?.nonEmptyString() else {
-                showFakePreview()
-                return
+        guard let authenticator = authenticator else {
+            showFakePreview()
+            return
         }
-
-        let request: URLRequest
-        if blog.supports(.oAuth2Login) {
-            guard let token = blog.authToken?.nonEmptyString() else {
-                showFakePreview()
-                return
-            }
-            request = WPURLRequest.requestForAuthentication(with: loginURL, redirectURL: url, username: username, password: nil, bearerToken: token, userAgent: nil)
-        } else {
-            guard let password = blog.password?.nonEmptyString() else {
-                showFakePreview()
-                return
-            }
-            request = WPURLRequest.requestForAuthentication(with: loginURL, redirectURL: url, username: username, password: password, bearerToken: nil, userAgent: nil)
-        }
-        delegate?.preview(self, attemptRequest: request)
+        authenticator.request(url: url, cookieJar: HTTPCookieStorage.shared, completion: { [weak delegate] request in
+            delegate?.preview(self, attemptRequest: request)
+        })
     }
 }
 

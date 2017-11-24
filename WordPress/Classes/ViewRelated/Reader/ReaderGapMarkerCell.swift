@@ -39,7 +39,7 @@ open class ReaderGapMarkerCell: UITableViewCell {
         button.isUserInteractionEnabled = false
     }
 
-    open func animateActivityView(_ animate: Bool) {
+    @objc open func animateActivityView(_ animate: Bool) {
         button.alpha = animate ? WPAlphaZero : WPAlphaFull
         if animate {
             activityView.startAnimating()
@@ -52,14 +52,14 @@ open class ReaderGapMarkerCell: UITableViewCell {
         super.setHighlighted(highlighted, animated: animated)
         button.isHighlighted = highlighted
         button.backgroundColor = highlighted ? WPStyleGuide.gapMarkerButtonBackgroundColorHighlighted() : WPStyleGuide.gapMarkerButtonBackgroundColor()
-        if (highlighted) {
+        if highlighted {
             // Redraw the backgrounds when highlighted
             drawTearBackground()
             tearMaskView.backgroundColor = WPStyleGuide.greyLighten30()
         }
     }
 
-    func drawTearBackground() {
+    @objc func drawTearBackground() {
         let tearImage = UIImage(named: "background-reader-tear")
         tearBackgroundView.backgroundColor = UIColor(patternImage: tearImage!)
     }

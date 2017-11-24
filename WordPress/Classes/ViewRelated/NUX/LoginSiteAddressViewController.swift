@@ -16,8 +16,8 @@ class LoginSiteAddressViewController: LoginViewController, SigninKeyboardRespond
     override var loginFields: LoginFields {
         didSet {
             // Clear the site url and site info (if any) from LoginFields
-            loginFields.siteUrl = ""
-            loginFields.siteInfo = nil
+            loginFields.siteAddress = ""
+            loginFields.meta.siteInfo = nil
         }
     }
 
@@ -34,7 +34,7 @@ class LoginSiteAddressViewController: LoginViewController, SigninKeyboardRespond
         super.viewWillAppear(animated)
 
         // Update special case login fields.
-        loginFields.userIsDotCom = false
+        loginFields.meta.userIsDotCom = false
 
         configureTextFields()
         configureSubmitButton(animating: false)
@@ -64,7 +64,7 @@ class LoginSiteAddressViewController: LoginViewController, SigninKeyboardRespond
 
     /// Assigns localized strings to various UIControl defined in the storyboard.
     ///
-    func localizeControls() {
+    @objc func localizeControls() {
         instructionLabel?.text = NSLocalizedString("Enter the address of your WordPress site you'd like to connect.", comment: "Instruction text on the login's site addresss screen.")
 
         siteURLField.placeholder = NSLocalizedString("example.wordpress.com", comment: "Site Address placeholder")
@@ -83,9 +83,9 @@ class LoginSiteAddressViewController: LoginViewController, SigninKeyboardRespond
 
     /// Configures the content of the text fields based on what is saved in `loginFields`.
     ///
-    func configureTextFields() {
+    @objc func configureTextFields() {
         siteURLField.textInsets = WPStyleGuide.edgeInsetForLoginTextFields()
-        siteURLField.text = loginFields.siteUrl
+        siteURLField.text = loginFields.siteAddress
     }
 
 
@@ -115,7 +115,7 @@ class LoginSiteAddressViewController: LoginViewController, SigninKeyboardRespond
     /// Configure the view for an editing state. Should only be called from viewWillAppear
     /// as this method skips animating any change in height.
     ///
-    func configureViewForEditingIfNeeded() {
+    @objc func configureViewForEditingIfNeeded() {
         // Check the helper to determine whether an editing state should be assumed.
         adjustViewForKeyboard(SigninEditingState.signinEditingStateActive)
         if SigninEditingState.signinEditingStateActive {
@@ -130,7 +130,7 @@ class LoginSiteAddressViewController: LoginViewController, SigninKeyboardRespond
     /// Validates what is entered in the various form fields and, if valid,
     /// proceeds with the submit action.
     ///
-    func validateForm() {
+    @objc func validateForm() {
         view.endEditing(true)
         displayError(message: "")
         guard SigninHelpers.validateSiteForSignin(loginFields) else {
@@ -141,9 +141,9 @@ class LoginSiteAddressViewController: LoginViewController, SigninKeyboardRespond
         configureViewLoading(true)
 
         let facade = WordPressXMLRPCAPIFacade()
-        facade.guessXMLRPCURL(forSite: loginFields.siteUrl, success: { [weak self] (url) in
+        facade.guessXMLRPCURL(forSite: loginFields.siteAddress, success: { [weak self] (url) in
             if let url = url {
-                self?.loginFields.xmlRPCURL = url
+                self?.loginFields.meta.xmlrpcURL = url as NSURL
             }
             self?.fetchSiteInfo()
 
@@ -179,13 +179,13 @@ class LoginSiteAddressViewController: LoginViewController, SigninKeyboardRespond
     }
 
 
-    func fetchSiteInfo() {
-        let baseSiteUrl = SigninHelpers.baseSiteURL(string: loginFields.siteUrl) as NSString
+    @objc func fetchSiteInfo() {
+        let baseSiteUrl = SigninHelpers.baseSiteURL(string: loginFields.siteAddress) as NSString
         if let siteAddress = baseSiteUrl.components(separatedBy: "://").last {
 
             let service = BlogService(managedObjectContext: ContextManager.sharedInstance().mainContext)
             service.fetchSiteInfo(forAddress: siteAddress, success: { [weak self] (siteInfo) in
-                self?.loginFields.siteInfo = siteInfo
+                self?.loginFields.meta.siteInfo = siteInfo
                 self?.showSelfHostedUsernamePassword()
             }, failure: { [weak self] (error) in
                 self?.showSelfHostedUsernamePassword()
@@ -197,7 +197,7 @@ class LoginSiteAddressViewController: LoginViewController, SigninKeyboardRespond
     }
 
 
-    func originalErrorOrError(error: NSError) -> NSError {
+    @objc func originalErrorOrError(error: NSError) -> NSError {
         guard let err = error.userInfo[XMLRPCOriginalErrorKey] as? NSError else {
             return error
         }
@@ -205,7 +205,7 @@ class LoginSiteAddressViewController: LoginViewController, SigninKeyboardRespond
     }
 
 
-    func errorDiscoveringJetpackSite(error: NSError) -> Bool {
+    @objc func errorDiscoveringJetpackSite(error: NSError) -> Bool {
         if let _ = error.userInfo[WordPressOrgXMLRPCValidator.UserInfoHasJetpackKey] {
             return true
         }
@@ -214,7 +214,7 @@ class LoginSiteAddressViewController: LoginViewController, SigninKeyboardRespond
     }
 
 
-    func showSelfHostedUsernamePassword() {
+    @objc func showSelfHostedUsernamePassword() {
         configureViewLoading(false)
         performSegue(withIdentifier: .showURLUsernamePassword, sender: self)
     }
@@ -222,7 +222,7 @@ class LoginSiteAddressViewController: LoginViewController, SigninKeyboardRespond
 
     /// Whether the form can be submitted.
     ///
-    func canSubmit() -> Bool {
+    @objc func canSubmit() -> Bool {
         return SigninHelpers.validateSiteForSignin(loginFields)
     }
 
@@ -249,7 +249,7 @@ class LoginSiteAddressViewController: LoginViewController, SigninKeyboardRespond
     }
 
     @IBAction func handleTextFieldDidChange(_ sender: UITextField) {
-        loginFields.siteUrl = SigninHelpers.baseSiteURL(string: siteURLField.nonNilTrimmedText())
+        loginFields.siteAddress = SigninHelpers.baseSiteURL(string: siteURLField.nonNilTrimmedText())
         configureSubmitButton(animating: false)
     }
 
@@ -257,12 +257,12 @@ class LoginSiteAddressViewController: LoginViewController, SigninKeyboardRespond
     // MARK: - Keyboard Notifications
 
 
-    func handleKeyboardWillShow(_ notification: Foundation.Notification) {
+    @objc func handleKeyboardWillShow(_ notification: Foundation.Notification) {
         keyboardWillShow(notification)
     }
 
 
-    func handleKeyboardWillHide(_ notification: Foundation.Notification) {
+    @objc func handleKeyboardWillHide(_ notification: Foundation.Notification) {
         keyboardWillHide(notification)
     }
 }

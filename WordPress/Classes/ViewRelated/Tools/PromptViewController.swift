@@ -22,7 +22,7 @@ private class PromptContainerViewController: UIViewController {
         stopListeningToProperties(childViewController)
     }
 
-    init(viewController: UIViewController) {
+    @objc init(viewController: UIViewController) {
         // You stay with us, sir
         childViewController = viewController
 
@@ -75,7 +75,7 @@ private class PromptContainerViewController: UIViewController {
         }
     }
 
-    override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
+    override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?) {
         guard let unwrappedKeyPath = keyPath, let property = Properties(rawValue: unwrappedKeyPath) else {
             return
         }

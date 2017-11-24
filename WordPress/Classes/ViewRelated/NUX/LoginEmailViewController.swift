@@ -8,10 +8,13 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
     @IBOutlet var selfHostedSigninButton: UIButton!
     @IBOutlet var bottomContentConstraint: NSLayoutConstraint?
     @IBOutlet var verticalCenterConstraint: NSLayoutConstraint?
-    var onePasswordButton: UIButton!
+    @IBOutlet var inputStack: UIStackView?
+    @objc var onePasswordButton: UIButton!
+    @objc var googleLoginButton: UIButton?
 
-    var didFindSafariSharedCredentials = false
-    var didRequestSafariSharedCredentials = false
+    @objc var didFindSafariSharedCredentials = false
+    @objc var didRequestSafariSharedCredentials = false
+    fileprivate var awaitingGoogle = false
     override var restrictToWPCom: Bool {
         didSet {
             if isViewLoaded {
@@ -27,7 +30,9 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
     }
 
     private struct Constants {
-        static let googleButtonOffset: CGFloat = 5.0
+        static let googleButtonOffset: CGFloat = 10.0
+        static let googleButtonAnimationDuration: TimeInterval = 0.33
+        static let keyboardThreshold: CGFloat = 100.0
     }
 
 
@@ -51,7 +56,7 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
         navigationController?.setNavigationBarHidden(false, animated: false)
 
         // Update special case login fields.
-        loginFields.userIsDotCom = true
+        loginFields.meta.userIsDotCom = true
 
         configureEmailField()
         configureSubmitButton()
@@ -83,7 +88,7 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
 
     /// Hides the self-hosted login option.
     ///
-    func configureForWPComOnlyIfNeeded() {
+    @objc func configureForWPComOnlyIfNeeded() {
         if restrictToWPCom {
             selfHostedSigninButton.isEnabled = false
             selfHostedSigninButton.alpha = 0.0
@@ -96,7 +101,7 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
 
     /// Assigns localized strings to various UIControl defined in the storyboard.
     ///
-    func localizeControls() {
+    @objc func localizeControls() {
         instructionLabel?.text = NSLocalizedString("Log in to WordPress.com using an email address to manage all your WordPress sites.", comment: "Instruction text on the login's email addresss screen.")
 
         emailTextField.placeholder = NSLocalizedString("Email address", comment: "Placeholder for a textfield. The user may enter their email address.")
@@ -116,44 +121,66 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
 
     /// Sets up a 1Password button if 1Password is available.
     ///
-    func setupOnePasswordButtonIfNeeded() {
+    @objc func setupOnePasswordButtonIfNeeded() {
         WPStyleGuide.configureOnePasswordButtonForTextfield(emailTextField,
                                                             target: self,
                                                             selector: #selector(handleOnePasswordButtonTapped(_:)))
     }
 
     /// Add the log in with Google button to the view
-    func addGoogleButton() {
-        guard Feature.enabled(.googleLogin) else {
+    @objc func addGoogleButton() {
+        guard Feature.enabled(.googleLogin),
+            let instructionLabel = instructionLabel,
+            let stackView = inputStack else {
             return
         }
 
-        let button = UIButton.googleLoginButton()
-        view.addSubview(button)
+        let button = WPStyleGuide.googleLoginButton()
+        let buttonWrapper = UIView()
+        buttonWrapper.addSubview(button)
+        stackView.addArrangedSubview(buttonWrapper)
         button.addTarget(self, action: #selector(googleLoginTapped), for: .touchUpInside)
 
-        view.addConstraints([
-            button.topAnchor.constraint(equalTo: self.emailTextField.bottomAnchor, constant: Constants.googleButtonOffset),
-            button.leadingAnchor.constraint(equalTo: view.layoutMarginsGuide.leadingAnchor),
-            button.trailingAnchor.constraint(equalTo: view.layoutMarginsGuide.trailingAnchor),
-            button.centerXAnchor.constraint(equalTo: emailTextField.centerXAnchor)
-        ])
+        buttonWrapper.addConstraints([
+            buttonWrapper.topAnchor.constraint(equalTo: button.topAnchor, constant: Constants.googleButtonOffset),
+            buttonWrapper.bottomAnchor.constraint(equalTo: button.bottomAnchor),
+            buttonWrapper.leadingAnchor.constraint(equalTo: button.leadingAnchor),
+            buttonWrapper.trailingAnchor.constraint(equalTo: button.trailingAnchor)
+            ])
+
+        stackView.addConstraints([
+            buttonWrapper.leadingAnchor.constraint(equalTo: instructionLabel.leadingAnchor),
+            buttonWrapper.trailingAnchor.constraint(equalTo: instructionLabel.trailingAnchor),
+            ])
+
+        googleLoginButton = button
     }
 
-    func googleLoginTapped() {
+    @objc func googleLoginTapped() {
+        awaitingGoogle = true
+        configureViewLoading(true)
+
+        GIDSignIn.sharedInstance().disconnect()
+
+        // Flag this as a social sign in.
+        loginFields.meta.socialService = SocialServiceName.google
+
+        // Configure all the things and sign in.
         GIDSignIn.sharedInstance().delegate = self
         GIDSignIn.sharedInstance().uiDelegate = self
         GIDSignIn.sharedInstance().clientID = ApiCredentials.googleLoginClientId()
         GIDSignIn.sharedInstance().serverClientID = ApiCredentials.googleLoginServerClientId()
 
         GIDSignIn.sharedInstance().signIn()
+
+        WPAppAnalytics.track(.loginSocialButtonClick)
     }
 
 
     /// Configures the email text field, updating its text based on what's stored
     /// in `loginFields`.
     ///
-    func configureEmailField() {
+    @objc func configureEmailField() {
         emailTextField.textInsets = WPStyleGuide.edgeInsetForLoginTextFields()
         emailTextField.text = loginFields.username
     }
@@ -161,7 +188,7 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
 
     /// Configures whether appearance of the submit button.
     ///
-    func configureSubmitButton() {
+    @objc func configureSubmitButton() {
         submitButton?.isEnabled = canSubmit()
     }
 
@@ -172,6 +199,8 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
     ///
     override func configureViewLoading(_ loading: Bool) {
         emailTextField.isEnabled = !loading
+        googleLoginButton?.isEnabled = !loading
+
         submitButton?.isEnabled = !loading
         submitButton?.showActivityIndicator(loading)
     }
@@ -180,7 +209,7 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
     /// Configure the view for an editing state. Should only be called from viewWillAppear
     /// as this method skips animating any change in height.
     ///
-    func configureViewForEditingIfNeeded() {
+    @objc func configureViewForEditingIfNeeded() {
         // Check the helper to determine whether an editiing state should be assumed.
         adjustViewForKeyboard(SigninEditingState.signinEditingStateActive)
         if SigninEditingState.signinEditingStateActive {
@@ -194,7 +223,7 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
 
     /// Makes the call to retrieve Safari shared credentials if they exist.
     ///
-    func fetchSharedWebCredentialsIfAvailable() {
+    @objc func fetchSharedWebCredentialsIfAvailable() {
         didRequestSafariSharedCredentials = true
         SigninHelpers.requestSharedWebCredentials { [weak self] (found, username, password) in
             self?.handleFetchedWebCredentials(found, username: username, password: password)
@@ -209,7 +238,7 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
     ///     - username: The selected username or nil.
     ///     - password: The selected password or nil.
     ///
-    func handleFetchedWebCredentials(_ found: Bool, username: String?, password: String?) {
+    @objc func handleFetchedWebCredentials(_ found: Bool, username: String?, password: String?) {
         didFindSafariSharedCredentials = found
 
         guard let username = username, let password = password else {
@@ -221,8 +250,7 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
         loginFields.password = password
 
         // Persist credentials as autofilled credentials so we can update them later if needed.
-        loginFields.safariStoredUsernameHash = username.hash
-        loginFields.safariStoredPasswordHash = password.hash
+        loginFields.setStoredCredentials(usernameHash: username.hash, passwordHash: password.hash)
 
         loginWithUsernamePassword(immediately: true)
 
@@ -237,8 +265,8 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
     ///     - immediately: True if the newly loaded controller should immedately attempt
     ///                        to authenticate the user with the available credentails.  Default is `false`.
     ///
-    func loginWithUsernamePassword(immediately: Bool = false) {
-        if (immediately) {
+    @objc func loginWithUsernamePassword(immediately: Bool = false) {
+        if immediately {
             validateFormAndLogin()
         } else {
             performSegue(withIdentifier: .showWPComLogin, sender: self)
@@ -248,7 +276,7 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
 
     /// Displays the self-hosted sign in form.
     ///
-    func loginToSelfHostedSite() {
+    @objc func loginToSelfHostedSite() {
         performSegue(withIdentifier: .showSelfHostedLogin, sender: self)
     }
 
@@ -256,15 +284,17 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
     /// Proceeds along the "magic link" sign-in flow, showing a form that let's
     /// the user request a magic link.
     ///
-    func requestLink() {
+    @objc func requestLink() {
         performSegue(withIdentifier: .startMagicLinkFlow, sender: self)
     }
 
 
     /// Validates what is entered in the various form fields and, if valid,
-    /// proceeds with the submit action.
+    /// proceeds with the submit action. Empties loginFields.meta.socialService as
+    /// social signin does not require form validation.
     ///
-    func validateForm() {
+    @objc func validateForm() {
+        loginFields.meta.socialService = nil
         displayError(message: "")
         guard EmailFormatValidator.validate(string: loginFields.username) else {
             assertionFailure("Form should not be submitted unless there is a valid looking email entered.")
@@ -276,7 +306,7 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
         service.isPasswordlessAccount(loginFields.username,
                                       success: { [weak self] (passwordless: Bool) in
                                         self?.configureViewLoading(false)
-                                        self?.loginFields.passwordless = passwordless
+                                        self?.loginFields.meta.passwordless = passwordless
                                         self?.requestLink()
             },
                                       failure: { [weak self] (error: Error) in
@@ -301,14 +331,35 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
     override func displayRemoteError(_ error: Error!) {
         configureViewLoading(false)
 
-        errorToPresent = error
-        performSegue(withIdentifier: .showWPComLogin, sender: self)
+        if awaitingGoogle {
+            awaitingGoogle = false
+            GIDSignIn.sharedInstance().disconnect()
+
+            let errorTitle: String
+            let errorDescription: String
+            if (error as NSError).code == WordPressComOAuthError.unknownUser.rawValue {
+                errorTitle = NSLocalizedString("Connected But…", comment: "Title shown when a user logs in with Google but no matching WordPress.com account is found")
+                errorDescription = NSLocalizedString("The Google account \"\(loginFields.username)\" doesn't match any account on WordPress.com", comment: "Description shown when a user logs in with Google but no matching WordPress.com account is found")
+                WPAppAnalytics.track(.loginSocialErrorUnknownUser)
+            } else {
+                errorTitle = NSLocalizedString("Unable To Connect", comment: "Shown when a user logs in with Google but it subsequently fails to work as login to WordPress.com")
+                errorDescription = error.localizedDescription
+            }
+
+            let socialErrorVC = LoginSocialErrorViewController(title: errorTitle, description: errorDescription)
+            let socialErrorNav = LoginNavigationController(rootViewController: socialErrorVC)
+            socialErrorVC.delegate = self
+            present(socialErrorNav, animated: true) {}
+        } else {
+            errorToPresent = error
+            performSegue(withIdentifier: .showWPComLogin, sender: self)
+        }
     }
 
 
     /// Whether the form can be submitted.
     ///
-    func canSubmit() -> Bool {
+    @objc func canSubmit() -> Bool {
         return EmailFormatValidator.validate(string: loginFields.username)
     }
 
@@ -328,7 +379,7 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
     }
 
 
-    func handleOnePasswordButtonTapped(_ sender: UIButton) {
+    @objc func handleOnePasswordButtonTapped(_ sender: UIButton) {
         view.endEditing(true)
 
         SigninHelpers.fetchOnePasswordCredentials(self, sourceView: sender, loginFields: loginFields) { [weak self] (loginFields) in
@@ -359,26 +410,111 @@ class LoginEmailViewController: LoginViewController, SigninKeyboardResponder {
     // MARK: - Keyboard Notifications
 
 
-    func handleKeyboardWillShow(_ notification: Foundation.Notification) {
+    @objc func handleKeyboardWillShow(_ notification: Foundation.Notification) {
         keyboardWillShow(notification)
+
+        adjustGoogleButtonVisibility(true)
     }
 
 
-    func handleKeyboardWillHide(_ notification: Foundation.Notification) {
+    @objc func handleKeyboardWillHide(_ notification: Foundation.Notification) {
         keyboardWillHide(notification)
+
+        adjustGoogleButtonVisibility(false)
     }
 
+    @objc func adjustGoogleButtonVisibility(_ visible: Bool) {
+        let errorLength = errorLabel?.text?.count ?? 0
+        let keyboardTallEnough = SigninEditingState.signinLastKeyboardHeightDelta > Constants.keyboardThreshold
+        let keyboardVisible = visible && keyboardTallEnough
+
+        let baseAlpha: CGFloat = errorLength > 0 ? 0.0 : 1.0
+        let newAlpha: CGFloat = keyboardVisible ? baseAlpha : 1.0
+
+        UIView.animate(withDuration: Constants.googleButtonAnimationDuration) { [weak self] in
+            self?.googleLoginButton?.alpha = newAlpha
+        }
+    }
+}
+
+// LoginFacadeDelegate methods for Google Google Sign In
+extension LoginEmailViewController {
+    func finishedLogin(withGoogleIDToken googleIDToken: String!, authToken: String!) {
+        let username = loginFields.username
+        syncWPCom(username, authToken: authToken, requiredMultifactor: false)
+        // Disconnect now that we're done with Google.
+        GIDSignIn.sharedInstance().disconnect()
+        WPAppAnalytics.track(.loginSocialSuccess)
+    }
+
+
+    func existingUserNeedsConnection(_ email: String!) {
+        // Disconnect now that we're done with Google.
+        GIDSignIn.sharedInstance().disconnect()
+
+        loginFields.username = email
+        loginFields.emailAddress = email
+
+        performSegue(withIdentifier: NUXAbstractViewController.SegueIdentifier.showWPComLogin, sender: self)
+        WPAppAnalytics.track(.loginSocialAccountsNeedConnecting)
+        configureViewLoading(false)
+    }
+
+
+    func needsMultifactorCode(forUserID userID: Int, andNonceInfo nonceInfo: SocialLogin2FANonceInfo!) {
+        loginFields.nonceInfo = nonceInfo
+        loginFields.nonceUserID = userID
+
+        performSegue(withIdentifier: NUXAbstractViewController.SegueIdentifier.show2FA, sender: self)
+        WPAppAnalytics.track(.loginSocial2faNeeded)
+        configureViewLoading(false)
+    }
 }
 
 extension LoginEmailViewController: GIDSignInDelegate {
-    func sign(_ signIn: GIDSignIn!, didSignInFor user: GIDGoogleUser!, withError error: Error!) {
-        // TODO: implement wpcom login via Google code
+    func sign(_ signIn: GIDSignIn?, didSignInFor user: GIDGoogleUser?, withError error: Error?) {
+        guard let user = user,
+            let token = user.authentication.idToken,
+            let email = user.profile.email else {
+                // The Google SignIn for may have been canceled.
+                if let err = error {
+                    WPAppAnalytics.track(.loginSocialButtonFailure, error: err)
+                } else {
+                    WPAppAnalytics.track(.loginSocialButtonFailure)
+                }
+                configureViewLoading(false)
+                return
+        }
 
-        let alert = UIAlertController(title: "Login Success", message: "Google login succeeded. Actual wpcom account login yet to be implemented.", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Ok. Thanks.", style: .default, handler: { [weak self] (action) in
-            self?.dismiss(animated: true){}
-        }))
-        present(alert, animated: true)
+        // Store the email address and token.
+        loginFields.emailAddress = email
+        loginFields.username = email
+        loginFields.meta.socialServiceIDToken = token
+
+        loginFacade.loginToWordPressDotCom(withGoogleIDToken: token)
+    }
+}
+
+extension LoginEmailViewController: LoginSocialErrorViewControllerDelegate {
+    private func cleanupAfterSocialErrors() {
+        dismiss(animated: true) {}
+    }
+
+    func retryWithEmail() {
+        loginFields.username = ""
+        cleanupAfterSocialErrors()
+    }
+    func retryWithAddress() {
+        cleanupAfterSocialErrors()
+        loginToSelfHostedSite()
+    }
+    func retryAsSignup() {
+        cleanupAfterSocialErrors()
+        let storyboard = UIStoryboard(name: "Login", bundle: nil)
+        if let controller = storyboard.instantiateViewController(withIdentifier: "SignupViewController") as? NUXAbstractViewController {
+            controller.loginFields = loginFields
+            navigationController?.pushViewController(controller, animated: true)
+        }
     }
 }
 

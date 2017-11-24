@@ -19,7 +19,7 @@ class JetpackLoginViewController: UIViewController {
     /// This completion handler closure is executed when the authentication process handled
     /// by this VC is completed.
     ///
-    open var completionBlock: CompletionBlock?
+    @objc open var completionBlock: CompletionBlock?
 
     @IBOutlet fileprivate weak var jetpackImage: UIImageView!
     @IBOutlet fileprivate weak var descriptionLabel: UILabel!
@@ -70,7 +70,7 @@ class JetpackLoginViewController: UIViewController {
     ///
     /// - Parameter blog: The current blog
     ///
-    init(blog: Blog) {
+    @objc init(blog: Blog) {
         self.blog = blog
         super.init(nibName: nil, bundle: nil)
     }
@@ -153,9 +153,9 @@ class JetpackLoginViewController: UIViewController {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
 
-        let attributes: StyledHTMLAttributes = [ .BodyAttribute: [ NSFontAttributeName: UIFont.systemFont(ofSize: 14),
-                                                                   NSForegroundColorAttributeName: WPStyleGuide.allTAllShadeGrey(),
-                                                                   NSParagraphStyleAttributeName: paragraphStyle ]]
+        let attributes: StyledHTMLAttributes = [ .BodyAttribute: [.font: UIFont.systemFont(ofSize: 14),
+                                                                  .foregroundColor: WPStyleGuide.allTAllShadeGrey(),
+                                                                  .paragraphStyle: paragraphStyle]]
 
         let attributedCode = NSAttributedString.attributedStringWithHTML(string, attributes: attributes)
         let attributedCodeHighlighted = attributedCode.mutableCopy() as! NSMutableAttributedString
@@ -180,10 +180,10 @@ class JetpackLoginViewController: UIViewController {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
 
-        let attributes: StyledHTMLAttributes = [ .BodyAttribute: [ NSFontAttributeName: UIFont.systemFont(ofSize: 14),
-                                                                   NSForegroundColorAttributeName: WPStyleGuide.allTAllShadeGrey(),
-                                                                   NSUnderlineStyleAttributeName: NSUnderlineStyle.styleSingle.rawValue as AnyObject,
-                                                                   NSParagraphStyleAttributeName: paragraphStyle ]]
+        let attributes: StyledHTMLAttributes = [ .BodyAttribute: [ .font: UIFont.systemFont(ofSize: 14),
+                                                                   .foregroundColor: WPStyleGuide.allTAllShadeGrey(),
+                                                                   .underlineStyle: NSUnderlineStyle.styleSingle.rawValue,
+                                                                   .paragraphStyle: paragraphStyle ]]
 
         let attributedCode = NSAttributedString.attributedStringWithHTML(string, attributes: attributes)
         let attributedCodeHighlighted = attributedCode.mutableCopy() as! NSMutableAttributedString
@@ -209,7 +209,7 @@ class JetpackLoginViewController: UIViewController {
 
     // MARK: - Textfield
 
-    func registerForTextFieldNotifications() {
+    @objc func registerForTextFieldNotifications() {
         NotificationCenter.default.addObserver(self, selector: #selector(textFieldChanged(_ :)),
                                                name: .UITextFieldTextDidChange, object: usernameTextField)
         NotificationCenter.default.addObserver(self, selector: #selector(textFieldChanged(_ :)),
@@ -218,31 +218,31 @@ class JetpackLoginViewController: UIViewController {
                                                name: .UITextFieldTextDidChange, object: verificationCodeTextField)
     }
 
-    func deregisterFromTextFieldNotifications() {
+    @objc func deregisterFromTextFieldNotifications() {
         NotificationCenter.default.removeObserver(self, name: .UITextFieldTextDidChange, object: usernameTextField)
         NotificationCenter.default.removeObserver(self, name: .UITextFieldTextDidChange, object: passwordTextField)
         NotificationCenter.default.removeObserver(self, name: .UITextFieldTextDidChange, object: verificationCodeTextField)
     }
 
-    func textFieldChanged(_ notification: Foundation.Notification) {
+    @objc func textFieldChanged(_ notification: Foundation.Notification) {
         updateSignInButton()
     }
 
     // MARK: - Keyboard
 
-    func registerForKeyboardNotifications() {
+    @objc func registerForKeyboardNotifications() {
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow(_ :)),
                                                name: .UIKeyboardWillShow, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillBeHidden(_ :)),
                                                name: .UIKeyboardWillHide, object: nil)
     }
 
-    func deregisterFromKeyboardNotifications() {
+    @objc func deregisterFromKeyboardNotifications() {
         NotificationCenter.default.removeObserver(self, name: .UIKeyboardWillShow, object: nil)
         NotificationCenter.default.removeObserver(self, name: .UIKeyboardWillHide, object: nil)
     }
 
-    func keyboardWillShow(_ notification: Foundation.Notification) {
+    @objc func keyboardWillShow(_ notification: Foundation.Notification) {
         scrollView.isScrollEnabled = true
         var info = notification.userInfo!
         let keyboardSize = (info[UIKeyboardFrameBeginUserInfoKey] as? NSValue)?.cgRectValue.size
@@ -260,7 +260,7 @@ class JetpackLoginViewController: UIViewController {
         }
     }
 
-    func keyboardWillBeHidden(_ notification: Notification) {
+    @objc func keyboardWillBeHidden(_ notification: Notification) {
         scrollView.contentInset = UIEdgeInsets.zero
         scrollView.scrollIndicatorInsets = UIEdgeInsets.zero
         scrollView.isScrollEnabled = false
@@ -372,7 +372,7 @@ class JetpackLoginViewController: UIViewController {
         })
     }
 
-    func hideKeyboard() {
+    @objc func hideKeyboard() {
         view.endEditing(true)
     }
 
@@ -410,7 +410,7 @@ class JetpackLoginViewController: UIViewController {
     fileprivate func signIn() {
         isAuthenticating = true
         hideKeyboard()
-        loginFields.userIsDotCom = true
+        loginFields.meta.userIsDotCom = true
         loginFields.username = usernameTextField.nonNilTrimmedText()
         loginFields.password = passwordTextField.nonNilTrimmedText()
         loginFields.multifactorCode = verificationCodeTextField.nonNilTrimmedText()
@@ -419,7 +419,7 @@ class JetpackLoginViewController: UIViewController {
 
     fileprivate func sendSMSCode() {
         let message = NSLocalizedString("SMS Sent", comment: "One Time Code has been sent via SMS")
-        loginFields.userIsDotCom = true
+        loginFields.meta.userIsDotCom = true
         loginFields.username = usernameTextField.nonNilTrimmedText()
         loginFields.password = passwordTextField.nonNilTrimmedText()
         loginFacade.requestOneTimeCode(with: loginFields)
@@ -439,28 +439,19 @@ class JetpackLoginViewController: UIViewController {
     fileprivate func openInstallJetpackURL() {
         WPAppAnalytics.track(.selectedInstallJetpack)
         let targetURL = blog.adminUrl(withPath: jetpackInstallRelativePath)
-        displayWebView(url: targetURL,
-                            username: blog.usernameForSite,
-                            password: blog.password,
-                            wpLoginURL: URL(string: blog.loginUrl()))
+        displayWebView(url: targetURL)
     }
 
     fileprivate func openMoreInformationURL() {
         WPAppAnalytics.track(.selectedLearnMoreInConnectToJetpackScreen)
-        displayWebView(url: jetpackMoreInformationURL, username: nil, password: nil, wpLoginURL: nil)
+        displayWebView(url: jetpackMoreInformationURL)
     }
 
-    fileprivate func displayWebView(url: String, username: String?, password: String?, wpLoginURL: URL?) {
+    fileprivate func displayWebView(url: String) {
         guard let url =  URL(string: url) else {
             return
         }
-        guard let webViewController = WPWebViewController(url: url) else {
-            return
-        }
-
-        webViewController.username = username
-        webViewController.password = password
-        webViewController.wpLoginURL = wpLoginURL
+        let webViewController = WebViewControllerFactory.controller(url: url, blog: blog)
 
         if presentingViewController != nil {
             navigationController?.pushViewController(webViewController, animated: true)
@@ -492,7 +483,7 @@ class JetpackLoginViewController: UIViewController {
 
 // MARK: - UITextViewDelegate methods
 
-extension JetpackLoginViewController : UITextFieldDelegate {
+extension JetpackLoginViewController: UITextFieldDelegate {
     func textFieldDidBeginEditing(_ textField: UITextField) {
         activeField = textField
     }
@@ -519,7 +510,7 @@ extension JetpackLoginViewController : UITextFieldDelegate {
 
 // MARK: - LoginFacadeDelegate methods
 
-extension JetpackLoginViewController : LoginFacadeDelegate {
+extension JetpackLoginViewController: LoginFacadeDelegate {
     func displayRemoteError(_ error: Error!) {
         isAuthenticating = false
         handleSignInError(error)

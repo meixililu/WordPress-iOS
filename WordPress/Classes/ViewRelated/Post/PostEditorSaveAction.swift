@@ -13,12 +13,12 @@ import WordPressShared
 /// Some utility methods to help keep track of the current post action
 extension WPPostViewController {
     /// What action should be taken when the user taps the editor's save button?
-    var currentSaveAction: PostEditorSaveAction {
+    @objc var currentSaveAction: PostEditorSaveAction {
         if let status = post.status,
             let originalStatus = post.original?.status, status != originalStatus || !post.hasRemote() {
-            if (post.isScheduled()) {
+            if post.isScheduled() {
                 return .schedule
-            } else if (status == .publish) {
+            } else if status == .publish {
                 return .post
             } else {
                 return .save
@@ -29,7 +29,7 @@ extension WPPostViewController {
     }
 
     /// The title for the Save button, based on the current save action
-    var saveBarButtonItemTitle: String {
+    @objc var saveBarButtonItemTitle: String {
         switch currentSaveAction {
         case .schedule:
             return NSLocalizedString("Schedule", comment: "Schedule button, this is what the Publish button changes to in the Post Editor if the post has been scheduled for posting later.")
@@ -43,7 +43,7 @@ extension WPPostViewController {
     }
 
     /// The analytics stat to post when the user saves, based on the current post action
-    func analyticsStatForSaveAction(_ action: PostEditorSaveAction) -> WPAnalyticsStat {
+    @objc func analyticsStatForSaveAction(_ action: PostEditorSaveAction) -> WPAnalyticsStat {
         switch action {
         case .post:     return .editorPublishedPost
         case .schedule: return .editorScheduledPost

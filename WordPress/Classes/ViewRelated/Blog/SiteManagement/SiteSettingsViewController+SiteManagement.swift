@@ -9,7 +9,7 @@ public extension SiteSettingsViewController {
 
     /// Presents confirmation alert for Export Content
     ///
-    public func confirmExportContent() {
+    @objc public func confirmExportContent() {
         tableView.deselectSelectedRowWithAnimation(true)
 
         WPAppAnalytics.track(.siteSettingsExportSiteAccessed, with: self.blog)
@@ -72,7 +72,7 @@ public extension SiteSettingsViewController {
 
     /// Requests site purchases to determine whether site is deletable
     ///
-    public func checkSiteDeletable() {
+    @objc public func checkSiteDeletable() {
         tableView.deselectSelectedRowWithAnimation(true)
 
         let status = NSLocalizedString("Checking purchases…", comment: "Overlay message displayed while checking if site has premium purchases")
@@ -133,15 +133,12 @@ public extension SiteSettingsViewController {
     /// Brings up web interface showing site purchases for cancellation
     ///
     fileprivate func showPurchases() {
-        let purchasesUrl = "https://wordpress.com/purchases"
+        let url = URL(string: "https://wordpress.com/purchases")!
 
-        let controller = WPWebViewController()
-        controller.authToken = blog.authToken
-        controller.username = blog.usernameForSite
-        controller.password = blog.password
-        controller.wpLoginURL = URL(string: blog.loginUrl())
-        controller.secureInteraction = true
-        controller.url = URL(string: purchasesUrl)
+        let configuration = WebViewControllerConfiguration(url: url)
+        configuration.secureInteraction = true
+        configuration.authenticate(blog: blog)
+        let controller = WebViewControllerFactory.controller(configuration: configuration)
         controller.loadViewIfNeeded()
         controller.navigationItem.titleView = nil
         controller.title = NSLocalizedString("Purchases", comment: "Title of screen showing site purchases")
