@@ -365,11 +365,14 @@ class AztecPostViewController: UIViewController, PostEditor {
     ///
     fileprivate(set) var post: AbstractPost {
         didSet {
-            removeObservers(fromPost: oldValue)
-            addObservers(toPost: post)
-
-            postEditorStateContext = createEditorStateContext(for: post)
-            refreshInterface()
+            // Only refresh the UI if the post object was truly changed.
+            if post != oldValue {
+                removeObservers(fromPost: oldValue)
+                addObservers(toPost: post)
+                
+                postEditorStateContext = createEditorStateContext(for: post)
+                refreshInterface()
+            }
         }
     }
 
@@ -2542,19 +2545,40 @@ private extension AztecPostViewController {
     /// Autosaves the post.
     ///
     private func autosave() {
-        print("Autosaving...")
-
+        autosaveLocally()
+        autosaveToRemote()
+    }
+    
+    /// Autosaves the current post locally.
+    ///
+    private func autosaveLocally() {
         copyTitleAndContentToPost()
-
-        // The post must definitely have been inserted into a MOC at this point.
-        //
-        let managedObjectContext = post.managedObjectContext!
+    }
+    
+    /// Autosaves the current post to remote.
+    ///
+    private func autosaveToRemote() {
+        let titleLength = post.postTitle?.count ?? 0
+        let bodyLength = post.content?.count ?? 0
+        let canAutosaveToRemote = titleLength > 0 || bodyLength > 0
+        
+        guard canAutosaveToRemote else {
+            return
+        }
+        
+        print("Autosaving...")
+        
+        let managedObjectContext = ContextManager.sharedInstance().mainContext
         let postService = PostService(managedObjectContext: managedObjectContext);
-
+        
         postService.autosave(post, success: { [weak self] (post) in
             print("Success")
             
-            self?.post = post
+            guard let `self` = self else {
+                return
+            }
+            
+            self.post = post
         }) { (error) in
             print("Failure")
         }
